@@ -12,7 +12,6 @@ FILE_TECNICI = 'tecnici.json'
 COLONNE_DEFAULT = ['Tecnico', 'Destinazione', 'Scopo', 'Inizio', 'Fine', 'lat', 'lon', 'Esito_Report']
 
 st.set_page_config(page_title="Gestione Trasferte FSM", layout="wide")
-# Impostiamo la lingua italiana per il geolocator
 geolocator = Nominatim(user_agent="planner_team_aziendale")
 
 # --- GESTIONE DATI LOCALI ---
@@ -53,14 +52,16 @@ def genera_excel(df):
     return output.getvalue()
 
 def valida_consistenza_dataframe(df):
-    """Controlla l'intero dataframe per date invertite o sovrapposizioni"""
     for index, row in df.iterrows():
         if row['Fine'] < row['Inizio']:
             return False, f"La data di fine precede l'inizio per {row['Tecnico']}."
-        # Cerca conflitti escludendo la riga stessa (tramite indice)
         storico = df[(df['Tecnico'] == row['Tecnico']) & (df.index != index)]
         for _, r_storico in storico.iterrows():
-            if (row['Inizio'] <= r_storico['Fine']) and (row['Fine'] >= r_storico['Inizio']):
+            row_inizio = pd.to_datetime(row['Inizio']).date()
+            row_fine = pd.to_datetime(row['Fine']).date()
+            r_inizio = pd.to_datetime(r_storico['Inizio']).date()
+            r_fine = pd.to_datetime(r_storico['Fine']).date()
+            if (row_inizio <= r_fine) and (row_fine >= r_inizio):
                 return False, f"Conflitto rilevato per {row['Tecnico']} a {row['Destinazione']}."
     return True, ""
 
@@ -71,11 +72,11 @@ tab_pianifica, tab_dashboard, tab_mappa, tab_modifica, tab_team, tab_dati = tabs
 # --- 1. SCHEDA PIANIFICA ---
 with tab_pianifica:
     st.header("Pianifica Nuova Missione")
-    
     col_form, col_calendario = st.columns([1, 1])
     
     with col_form:
         with st.form("form_pianificazione"):
+            # Streamlit si aggiorna nativamente al variare di questo input prima del submit
             tecnico = st.selectbox("Nome Tecnico", st.session_state.tecnici)
             destinazione = st.text_input("Destinazione (Città, Paese)", "Milano, Italia")
             scopo = st.text_input("Scopo della Missione", "Manutenzione ordinaria")
@@ -86,7 +87,6 @@ with tab_pianifica:
             
             submit = st.form_submit_button("Assegna Trasferta")
     
-    # Mini-Calendario per il tecnico selezionato
     with col_calendario:
         st.subheader(f"Disponibilità: {tecnico}")
         df_tec = st.session_state.missioni[st.session_state.missioni['Tecnico'] == tecnico].copy()
@@ -94,31 +94,28 @@ with tab_pianifica:
             df_tec['Inizio'] = pd.to_datetime(df_tec['Inizio'])
             df_tec['Fine_Gantt'] = pd.to_datetime(df_tec['Fine']) + pd.Timedelta(days=1)
             fig_mini = px.timeline(df_tec, x_start="Inizio", x_end="Fine_Gantt", y="Tecnico", color="Destinazione", height=250)
-            fig_mini.update_yaxes(visible=False) # Nasconde il nome asse Y per spazio
+            
+            # Blocca asse Y e inserisce le righe temporali verticali 
+            fig_mini.update_yaxes(visible=False, fixedrange=True)
+            fig_mini.update_xaxes(showgrid=True, gridwidth=1, gridcolor='gray', dtick="M1", tickformat="%b %Y")
             st.plotly_chart(fig_mini, use_container_width=True)
         else:
             st.success(f"{tecnico} non ha attualmente trasferte pianificate.")
             
     if submit:
-        # 1. Controllo date logiche
         if fine < inizio:
             st.error("Errore: La fine precede l'inizio.")
         else:
-    # 2. Controllo sovrapposizioni (Aggiornato per evitare il TypeError)
             conflitto = False
             for _, row in df_tec.iterrows():
-                # Converte esplicitamente in data standard per poterle confrontare con gli input di Streamlit
-                row_inizio = pd.to_datetime(row['Inizio']).date()
-                row_fine = pd.to_datetime(row['Fine']).date()
-                
-                if (inizio <= row_fine) and (fine >= row_inizio):
+                r_inizio = pd.to_datetime(row['Inizio']).date()
+                r_fine = pd.to_datetime(row['Fine']).date()
+                if (inizio <= r_fine) and (fine >= r_inizio):
                     conflitto = True
                     break
-            
             if conflitto:
                 st.error("⚠️ Conflitto! Il tecnico è già impegnato in queste date (vedi calendario a lato).")
             else:
-                # 3. Controllo Smart della Destinazione
                 with st.spinner("Verifica coerenza destinazione..."):
                     try:
                         loc = geolocator.geocode(destinazione, language='it')
@@ -142,32 +139,24 @@ with tab_dashboard:
     st.header("Timeline Allocazioni")
     df_corrente = st.session_state.missioni
     if not df_corrente.empty:
-        vista_tempo = st.radio("Dettaglio temporale:", ["Settimana", "Mese", "Trimestre", "Anno"], horizontal=True)
-        
         df_gantt = df_corrente.copy()
         df_gantt['Inizio'] = pd.to_datetime(df_gantt['Inizio'])
         df_gantt['Fine_Gantt'] = pd.to_datetime(df_gantt['Fine']) + pd.Timedelta(days=1)
         
+        # Inserita la destinazione graficamente dentro la barra
         fig_gantt = px.timeline(df_gantt, x_start="Inizio", x_end="Fine_Gantt", y="Tecnico", 
-                                color="Destinazione", hover_data=["Scopo"])
-        fig_gantt.update_yaxes(autorange="reversed")
+                                color="Destinazione", text="Destinazione", hover_data=["Scopo"])
         
-        # Correzione del controllo griglia temporale di Plotly
-        if vista_tempo == "Settimana":
-            fig_gantt.update_xaxes(dtick=604800000, tickformat="%d %b") # 7 giorni in ms
-        elif vista_tempo == "Mese":
-            fig_gantt.update_xaxes(dtick="M1", tickformat="%b %Y")
-        elif vista_tempo == "Trimestre":
-            fig_gantt.update_xaxes(dtick="M3", tickformat="Q%q %Y")
-        else: # Anno
-            fig_gantt.update_xaxes(dtick="M12", tickformat="%Y")
-            
-        fig_gantt.update_xaxes(showgrid=True, gridwidth=1, gridcolor='gray')
+        fig_gantt.update_traces(textposition='inside', insidetextanchor='start')
+        # Zoom Y disabilitato (fixedrange), X libero
+        fig_gantt.update_yaxes(autorange="reversed", fixedrange=True) 
+        fig_gantt.update_xaxes(showgrid=True, gridwidth=1, gridcolor='gray', dtick="M1", tickformat="%b %Y")
+        
         st.plotly_chart(fig_gantt, use_container_width=True)
     else:
         st.info("Nessuna missione inserita.")
 
-# --- 3. SCHEDA MAPPA (POSIZIONE ATTUALE) ---
+# --- 3. SCHEDA MAPPA (AUTO ZOOM E POSIZIONE ATTUALE) ---
 with tab_mappa:
     st.header("Posizione Attuale dei Tecnici")
     df_corrente = st.session_state.missioni
@@ -175,24 +164,32 @@ with tab_mappa:
     st.write(f"Situazione alla data: **{oggi.strftime('%d/%m/%Y')}**")
     
     if not df_corrente.empty:
-        # Filtra solo le trasferte in corso oggi
         df_oggi = df_corrente[(df_corrente['Inizio'] <= oggi) & (df_corrente['Fine'] >= oggi)]
         df_mappa = df_oggi[(df_oggi['lat'] != 0.0) & (df_oggi['lon'] != 0.0)]
         
         if not df_mappa.empty:
-            # carto-positron evita le lingue locali (es. Arabo) privilegiando caratteri latini
+            # Calcolo automatico dell'inquadratura mappa
+            centro_lat, centro_lon = df_mappa['lat'].mean(), df_mappa['lon'].mean()
+            lat_diff = df_mappa['lat'].max() - df_mappa['lat'].min()
+            lon_diff = df_mappa['lon'].max() - df_mappa['lon'].min()
+            
+            zoom_level = max(2, min(10, 8 - max(lat_diff, lon_diff)))
+                
             fig_map = px.scatter_mapbox(df_mappa, lat="lat", lon="lon", color="Tecnico", 
                                         hover_name="Destinazione", hover_data=["Scopo", "Fine"],
-                                        zoom=3, mapbox_style="carto-positron", size_max=15)
+                                        mapbox_style="carto-positron")
             fig_map.update_traces(marker=dict(size=14, opacity=0.9))
-            fig_map.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
+            fig_map.update_layout(
+                margin={"r":0,"t":0,"l":0,"b":0},
+                mapbox=dict(center=dict(lat=centro_lat, lon=centro_lon), zoom=zoom_level)
+            )
             st.plotly_chart(fig_map, use_container_width=True)
         else:
             st.info("Nessun tecnico è attualmente in trasferta in data odierna.")
     else:
         st.info("Nessun dato a sistema.")
 
-# --- 4. SCHEDA MODIFICA DATI ---
+# --- 4. SCHEDA MODIFICA DATI (CONTROLLI RIGIDI) ---
 with tab_modifica:
     st.header("Modifica o Cancella Trasferte")
     if not st.session_state.missioni.empty:
@@ -200,7 +197,16 @@ with tab_modifica:
             st.session_state.missioni, 
             num_rows="dynamic",
             use_container_width=True,
-            column_config={"lat": None, "lon": None}
+            column_config={
+                "lat": None, "lon": None,
+                "Tecnico": st.column_config.SelectboxColumn(
+                    "Tecnico",
+                    options=st.session_state.tecnici,
+                    required=True
+                ),
+                "Inizio": st.column_config.DateColumn("Inizio", required=True),
+                "Fine": st.column_config.DateColumn("Fine", required=True)
+            }
         )
         
         if st.button("💾 Valida e Salva Modifiche"):
@@ -239,7 +245,6 @@ with tab_team:
 with tab_dati:
     st.header("💾 Importa e Esporta Excel")
     col1, col2 = st.columns(2)
-    
     with col1:
         st.subheader("Esporta Dati")
         if not st.session_state.missioni.empty:
@@ -251,7 +256,6 @@ with tab_dati:
             )
         else:
             st.write("Nessun dato da esportare.")
-            
     with col2:
         st.subheader("Importa Dati Storici")
         file_caricato = st.file_uploader("Carica Excel (.xlsx)", type=['xlsx'])
