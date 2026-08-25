@@ -104,10 +104,14 @@ with tab_pianifica:
         if fine < inizio:
             st.error("Errore: La fine precede l'inizio.")
         else:
-            # 2. Controllo sovrapposizioni
+    # 2. Controllo sovrapposizioni (Aggiornato per evitare il TypeError)
             conflitto = False
             for _, row in df_tec.iterrows():
-                if (inizio <= row['Fine']) and (fine >= row['Inizio']):
+                # Converte esplicitamente in data standard per poterle confrontare con gli input di Streamlit
+                row_inizio = pd.to_datetime(row['Inizio']).date()
+                row_fine = pd.to_datetime(row['Fine']).date()
+                
+                if (inizio <= row_fine) and (fine >= row_inizio):
                     conflitto = True
                     break
             
