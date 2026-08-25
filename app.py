@@ -1,28 +1,28 @@
 import streamlit as st
 import pandas as pd
 import datetime
-import json
 import os
 import io
 import plotly.express as px
 
 FILE_DATI = 'missioni.json'
 
+COLONNE_DEFAULT = ['Tecnico', 'Destinazione', 'Inizio', 'Fine', 'lat', 'lon', 'Esito_Report']
+
 # --- GESTIONE DATI (JSON) ---
 def carica_dati():
     if os.path.exists(FILE_DATI):
-        df = pd.read_json(FILE_DATI, orient='records')
-        # Converte le stringhe ISO in oggetti datetime.date per coerenza
-        df['Inizio'] = pd.to_datetime(df['Inizio']).dt.date
-        df['Fine'] = pd.to_datetime(df['Fine']).dt.date
-        return df
-    else:
-        return pd.DataFrame(columns=[
-            'Tecnico', 'Destinazione', 'Inizio', 'Fine', 'lat', 'lon', 'Esito_Report'
-        ])
+        try:
+            df = pd.read_json(FILE_DATI, orient='records')
+            if not df.empty and 'Inizio' in df.columns:
+                df['Inizio'] = pd.to_datetime(df['Inizio']).dt.date
+                df['Fine'] = pd.to_datetime(df['Fine']).dt.date
+                return df
+        except Exception:
+            pass
+    return pd.DataFrame(columns=COLONNE_DEFAULT)
 
 def salva_dati(df):
-    # Salva il dataframe in JSON formattando le date in formato ISO (YYYY-MM-DD)
     df.to_json(FILE_DATI, orient='records', date_format='iso')
 
 # --- INIZIALIZZAZIONE SESSIONE ---
@@ -47,6 +47,7 @@ def genera_excel(df):
         df.to_excel(writer, index=False, sheet_name='Piano_Trasferte')
     return output.getvalue()
 
+st.set_page_config(page_title="Planner Trasferte", layout="wide")
 st.title("Gestione Trasferte e Pianificazione Risorse")
 
 # --- INTERFACCIA PIANIFICAZIONE ---
@@ -78,7 +79,8 @@ with st.form("form_pianificazione"):
             }])
             st.session_state.missioni = pd.concat([st.session_state.missioni, nuova_missione], ignore_index=True)
             salva_dati(st.session_state.missioni)
-            st.success("Trasferta validata e salvata nel database JSON!")
+            st.success("Trasferta validata e registrata!")
+            st.rerun()
 
 # --- REPORT E VISUALIZZAZIONI ---
 st.header("2. Situazione Attuale")
@@ -97,10 +99,8 @@ if not df_corrente.empty:
     
     # Diagramma di Gantt
     st.subheader("Pianificazione Temporale (Gantt)")
-    # Plotly richiede colonne datetime
     df_gantt = df_corrente.copy()
     df_gantt['Inizio'] = pd.to_datetime(df_gantt['Inizio'])
-    # Aggiungiamo 1 giorno alla fine per mostrare correttamente la fine nel Gantt
     df_gantt['Fine_Gantt'] = pd.to_datetime(df_gantt['Fine']) + pd.Timedelta(days=1)
     
     fig = px.timeline(
@@ -111,7 +111,7 @@ if not df_corrente.empty:
         color="Destinazione",
         title="Timeline Allocazioni Personale"
     )
-    fig.update_yaxes(autorange="reversed") # Ordina dall'alto al basso
+    fig.update_yaxes(autorange="reversed")
     st.plotly_chart(fig, use_container_width=True)
     
     # Mappa
