@@ -4,10 +4,21 @@ import datetime
 import os
 import io
 import plotly.express as px
+from geopy.geocoders import Nominatim
 
 FILE_DATI = 'missioni.json'
+COLONNE_DEFAULT = ['Tecnico', 'Destinazione', 'Scopo', 'Inizio', 'Fine', 'lat', 'lon', 'Esito_Report']
 
-COLONNE_DEFAULT = ['Tecnico', 'Destinazione', 'Inizio', 'Fine', 'lat', 'lon', 'Esito_Report']
+# --- DATI DI BASE ---
+# Inserisci qui l'elenco dei tuoi 20 collaboratori
+LISTA_TECNICI = [
+    "Mario Rossi", "Giuseppe Verdi", "Andrea Bianchi", "Francesca Neri", 
+    "Luca Colombo", "Elena Ricci", "Marco Esposito", "Sofia Romano"
+]
+
+# --- INIZIALIZZAZIONE GEOLOCALIZZATORE ---
+# Usiamo Nominatim di OpenStreetMap per convertire il testo in coordinate
+geolocator = Nominatim(user_agent="planner_team_aziendale")
 
 # --- GESTIONE DATI (JSON) ---
 def carica_dati():
@@ -17,6 +28,9 @@ def carica_dati():
             if not df.empty and 'Inizio' in df.columns:
                 df['Inizio'] = pd.to_datetime(df['Inizio']).dt.date
                 df['Fine'] = pd.to_datetime(df['Fine']).dt.date
+                # Garantisce la retrocompatibilità se ci sono vecchi salvataggi senza la colonna 'Scopo'
+                if 'Scopo' not in df.columns:
+                    df['Scopo'] = "N/D"
                 return df
         except Exception:
             pass
@@ -54,16 +68,17 @@ st.title("Gestione Trasferte e Pianificazione Risorse")
 st.header("1. Pianifica Nuova Missione")
 with st.form("form_pianificazione"):
     col1, col2 = st.columns(2)
-    tecnico = col1.text_input("Nome Tecnico", "Mario Rossi")
-    destinazione = col2.text_input("Destinazione (Città/Paese)", "Monaco, Germania")
+    # 1. Campo Tecnico Intelligente (Selectbox con ricerca)
+    tecnico = col1.selectbox("Nome Tecnico", LISTA_TECNICI)
+    # 2. Campo Destinazione senza coordinate manuali
+    destinazione = col2.text_input("Destinazione (Città, Paese)", "Roma, Italia")
+    
+    # 3. Nuovo Campo Scopo
+    scopo = st.text_input("Scopo della Missione", "es. Integrazione sensori Elettro-ottici, SAT, Manutenzione...")
     
     col3, col4 = st.columns(2)
     inizio = col3.date_input("Data Inizio", datetime.date.today())
     fine = col4.date_input("Data Fine", datetime.date.today() + datetime.timedelta(days=5))
-    
-    col5, col6 = st.columns(2)
-    lat = col5.number_input("Latitudine", value=48.1351)
-    lon = col6.number_input("Longitudine", value=11.5820)
     
     submit = st.form_submit_button("Assegna Trasferta")
     
@@ -73,8 +88,21 @@ with st.form("form_pianificazione"):
         elif check_conflitto(tecnico, inizio, fine):
             st.error(f"⚠️ Conflitto! {tecnico} ha già un impegno in queste date.")
         else:
+            with st.spinner("Geolocalizzazione della destinazione in corso..."):
+                try:
+                    # Calcolo automatico di lat e lon
+                    location = geolocator.geocode(destinazione)
+                    if location:
+                        lat, lon = location.latitude, location.longitude
+                    else:
+                        lat, lon = 0.0, 0.0
+                        st.warning(f"Non sono riuscito a trovare le coordinate esatte per '{destinazione}'. Sulla mappa apparirà in coordinate 0,0.")
+                except Exception:
+                    lat, lon = 0.0, 0.0
+                    st.warning("Servizio di geolocalizzazione temporaneamente non disponibile.")
+
             nuova_missione = pd.DataFrame([{
-                'Tecnico': tecnico, 'Destinazione': destinazione, 
+                'Tecnico': tecnico, 'Destinazione': destinazione, 'Scopo': scopo,
                 'Inizio': inizio, 'Fine': fine, 'lat': lat, 'lon': lon, 'Esito_Report': 'In attesa'
             }])
             st.session_state.missioni = pd.concat([st.session_state.missioni, nuova_missione], ignore_index=True)
@@ -87,9 +115,10 @@ st.header("2. Situazione Attuale")
 df_corrente = st.session_state.missioni
 
 if not df_corrente.empty:
-    st.dataframe(df_corrente, use_container_width=True)
+    # Riorganizziamo le colonne per nascondere lat e lon dalla vista tabella
+    colonne_visibili = ['Tecnico', 'Destinazione', 'Scopo', 'Inizio', 'Fine', 'Esito_Report']
+    st.dataframe(df_corrente[colonne_visibili], use_container_width=True)
     
-    # Download Excel
     st.download_button(
         label="📥 Esporta in Excel",
         data=genera_excel(df_corrente),
@@ -97,24 +126,24 @@ if not df_corrente.empty:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
     
-    # Diagramma di Gantt
     st.subheader("Pianificazione Temporale (Gantt)")
     df_gantt = df_corrente.copy()
     df_gantt['Inizio'] = pd.to_datetime(df_gantt['Inizio'])
     df_gantt['Fine_Gantt'] = pd.to_datetime(df_gantt['Fine']) + pd.Timedelta(days=1)
     
+    # Nel Gantt facciamo apparire anche lo Scopo quando passi il mouse (hover_data)
     fig = px.timeline(
         df_gantt, 
         x_start="Inizio", 
         x_end="Fine_Gantt", 
         y="Tecnico", 
         color="Destinazione",
+        hover_data=["Scopo"],
         title="Timeline Allocazioni Personale"
     )
     fig.update_yaxes(autorange="reversed")
     st.plotly_chart(fig, use_container_width=True)
     
-    # Mappa
     st.subheader("Mappa Geografica Trasferte")
     st.map(df_corrente[['lat', 'lon']])
 else:
