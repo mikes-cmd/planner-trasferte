@@ -1,0 +1,19 @@
+{
+  "name": "field-service-manager",
+  "version": "1.0.0",
+  "description": "FSM Desktop",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "compile": "cross-env ELECTRON_RUN_AS_NODE=1 electron compile.js",
+    "dist": "electron-builder --win portable"
+  },
+  "dependencies": {
+    "bytenode": "^1.5.5"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  }
+}

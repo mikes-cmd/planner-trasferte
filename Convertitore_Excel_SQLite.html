@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Convertitore Excel a SQLite</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-asm.js"></script>
+</head>
+<body class="flex items-center justify-center h-screen bg-slate-50">
+
+  <div id="drop-zone" class="bg-white p-10 rounded-2xl shadow-xl border-4 border-dashed border-slate-300 text-center max-w-xl w-full transition-all duration-300">
+    <h1 class="text-2xl font-extrabold text-slate-900 mb-2">Migrazione Excel → SQLite</h1>
+    <p class="text-slate-500 mb-8">Trascina qui il tuo file Excel per generare il file <b>.sqlite</b></p>
+    
+    <div id="status" class="hidden px-4 py-3 rounded-lg font-bold text-sm bg-emerald-100 text-emerald-800 border-2 border-emerald-500">
+      Elaborazione in corso...
+    </div>
+  </div>
+
+  <script>
+    const escapeSql = (str) => String(str || '').replace(/'/g, "''");
+    const parseExcelNumber = (val) => { const p = parseFloat(String(val).replace(',', '.')); return isNaN(p) ? 0 : p; };
+    const parseExcelDate = (val) => {
+        if(!val) return "";
+        if(val instanceof Date) return new Date(val.getTime() - val.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+        if(typeof val === 'number') return new Date(Math.round((val - 25569) * 86400 * 1000)).toISOString().split('T')[0];
+        if(typeof val === 'string' && /^\d{2}[\/\-]\d{2}[\/\-]\d{4}/.test(val)) { const p = val.split(/[\/\-]/); return `${p[2].substring(0,4)}-${p[1]}-${p[0]}`; }
+        return String(val).substring(0, 10);
+    };
+
+    let SQL;
+    window.onload = async () => {
+        SQL = await window.initSqlJs(); 
+    };
+
+    const dropZone = document.getElementById('drop-zone');
+    const statusDiv = document.getElementById('status');
+
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('border-blue-500', 'bg-blue-50'); });
+    dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); dropZone.classList.remove('border-blue-500', 'bg-blue-50'); });
+    dropZone.addEventListener('drop', async (e) => {
+        e.preventDefault(); dropZone.classList.remove('border-blue-500', 'bg-blue-50');
+        
+        const file = e.dataTransfer.files[0];
+        if (!file || !file.name.endsWith('.xlsx')) return alert("Inserisci un file Excel (.xlsx)");
+
+        statusDiv.classList.remove('hidden');
+        statusDiv.innerText = "Costruzione schema SQLite in corso...";
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            try {
+                const data = new Uint8Array(event.target.result);
+                const wb = XLSX.read(data, { type: 'array', cellDates: true });
+                const db = new SQL.Database();
+                
+                db.run(`
+                    CREATE TABLE Tecnici (Tecnico TEXT);
+                    CREATE TABLE Luoghi (ID_Luogo TEXT, lat REAL, lon REAL);
+                    CREATE TABLE Prodotti (PN TEXT, NomeProdotto TEXT);
+                    CREATE TABLE CodiciProblematica (ID_CodiceProblematica TEXT, Descrizione TEXT);
+                    CREATE TABLE Trasferte (ID_Missione INTEGER PRIMARY KEY, ID_Operatore TEXT, Luogo_ID TEXT, DataInizio TEXT, DataFine TEXT, Scopo TEXT, lat REAL, lon REAL, Piattaforma TEXT, Prodotto_ID TEXT, SerialNumber TEXT, AllegatiLocali TEXT, AllegatiAggiuntivi TEXT);
+                    CREATE TABLE Problematiche (ID_Problema INTEGER PRIMARY KEY, Missione_ID INTEGER, PNAssieme TEXT, NomeAssieme TEXT, DataSegnalazione TEXT, CodiceProblematica_ID TEXT, DescrizioneProblema TEXT, Sintomi TEXT);
+                    CREATE TABLE Soluzioni (Soluzione_ID INTEGER PRIMARY KEY, Problema_ID INTEGER, DataSoluzione TEXT, Azione TEXT, Esito TEXT);
+                    CREATE TABLE SistemiDeployati (ID_Sistema INTEGER PRIMARY KEY, Piattaforma TEXT, Prodotto_ID TEXT, SerialNumber TEXT);
+                    CREATE TABLE Sottoinsiemi (ID_Sottoinsieme INTEGER PRIMARY KEY, Sistema_ID INTEGER, NomeSottoinsieme TEXT, StatoSalute TEXT, UltimoAggiornamento TEXT);
+                    CREATE TABLE CatalogoECP (ID_ECP TEXT PRIMARY KEY, Prodotto_ID TEXT, Descrizione TEXT);
+                    CREATE TABLE ApplicazioneECP (ID_Applicazione INTEGER PRIMARY KEY, Sistema_ID INTEGER, ECP_ID TEXT, StatoApplicazione TEXT, DataApplicazione TEXT);
+                `);
+
+                statusDiv.innerText = "Migrazione dati...";
+
+                if (wb.Sheets["Tecnici"]) XLSX.utils.sheet_to_json(wb.Sheets["Tecnici"]).forEach(r => { if(r.Tecnico) db.run(`INSERT INTO Tecnici VALUES ('${escapeSql(r.Tecnico)}')`); });
+                if (wb.Sheets["Luoghi"]) XLSX.utils.sheet_to_json(wb.Sheets["Luoghi"]).forEach(r => { const id = r.ID_Luogo || r.Nome || ''; if(id) db.run(`INSERT INTO Luoghi VALUES ('${escapeSql(id)}', ${parseExcelNumber(r.lat)}, ${parseExcelNumber(r.lon)})`); });
+                if (wb.Sheets["Prodotti"]) XLSX.utils.sheet_to_json(wb.Sheets["Prodotti"]).forEach(r => { const pn = r.PN || r.ID_Prodotto || r.Prodotto_ID || ''; if(pn) db.run(`INSERT INTO Prodotti VALUES ('${escapeSql(pn)}', '${escapeSql(r.NomeProdotto || r.Nome || r.Descrizione)}')`); });
+                if (wb.Sheets["CodiciProblematica"]) XLSX.utils.sheet_to_json(wb.Sheets["CodiciProblematica"]).forEach(r => { const id = r.ID_CodiceProblematica || r.ID || r.Codice || ''; if(id) db.run(`INSERT INTO CodiciProblematica VALUES ('${escapeSql(id)}', '${escapeSql(r.Descrizione || r.Nome)}')`); });
+                if (wb.Sheets["Trasferte"]) XLSX.utils.sheet_to_json(wb.Sheets["Trasferte"]).forEach(r => { const id = parseExcelNumber(r.ID_Missione); const pn = r.PN || r.Prodotto_ID || r.Part_Number || ''; if(id) db.run(`INSERT INTO Trasferte VALUES (${id}, '${escapeSql(r.ID_Operatore || r.Tecnico)}', '${escapeSql(r.Luogo_ID || r.Destinazione)}', '${parseExcelDate(r.DataInizio)}', '${parseExcelDate(r.DataFine)}', '${escapeSql(r.Scopo)}', ${parseExcelNumber(r.lat)}, ${parseExcelNumber(r.lon)}, '${escapeSql(r.Piattaforma)}', '${escapeSql(pn)}', '${escapeSql(r.SerialNumber)}', '${escapeSql(r.AllegatiLocali)}', '${escapeSql(r.AllegatiAggiuntivi)}')`); });
+                if (wb.Sheets["Problematiche"]) XLSX.utils.sheet_to_json(wb.Sheets["Problematiche"]).forEach(r => { const id = parseExcelNumber(r.ID_Problema || r.ID || r.Id); const id_miss = parseExcelNumber(r.Missione_ID || r.ID_Missione || r.Missione); if(id) db.run(`INSERT INTO Problematiche VALUES (${id}, ${id_miss}, '${escapeSql(r.PNAssieme)}', '${escapeSql(r.NomeAssieme)}', '${parseExcelDate(r.DataSegnalazione || r.Data || r.Data_Rilevamento)}', '${escapeSql(r.CodiceProblematica_ID || r.Codice_Problema || r.Codice)}', '${escapeSql(r.DescrizioneProblema || r.Descrizione)}', '${escapeSql(r.Sintomi || r.Sintomo)}')`); });
+                if (wb.Sheets["Soluzioni"]) XLSX.utils.sheet_to_json(wb.Sheets["Soluzioni"]).forEach(r => { const id = parseExcelNumber(r.Soluzione_ID || r.ID_Soluzione || r.ID || r.Id); const id_prob = parseExcelNumber(r.Problema_ID || r.ID_Problema || r.Problema); if(id) db.run(`INSERT INTO Soluzioni VALUES (${id}, ${id_prob}, '${parseExcelDate(r.DataSoluzione || r.Data || r.Data_Soluzione)}', '${escapeSql(r.Azione || r.Azione_Correttiva)}', '${escapeSql(r.Esito || r.Stato)}')`); });
+                
+                // Nuove tabelle Asset Management / As-Maintained
+                if (wb.Sheets["SistemiDeployati"]) XLSX.utils.sheet_to_json(wb.Sheets["SistemiDeployati"]).forEach(r => { const id = parseExcelNumber(r.ID_Sistema || r.ID); if(id) db.run(`INSERT INTO SistemiDeployati VALUES (${id}, '${escapeSql(r.Piattaforma)}', '${escapeSql(r.Prodotto_ID || r.PN)}', '${escapeSql(r.SerialNumber || r.SN)}')`); });
+                if (wb.Sheets["Sottoinsiemi"]) XLSX.utils.sheet_to_json(wb.Sheets["Sottoinsiemi"]).forEach(r => { const id = parseExcelNumber(r.ID_Sottoinsieme || r.ID); const id_sist = parseExcelNumber(r.Sistema_ID || r.Sistema); if(id) db.run(`INSERT INTO Sottoinsiemi VALUES (${id}, ${id_sist}, '${escapeSql(r.NomeSottoinsieme || r.Nome)}', '${escapeSql(r.StatoSalute || r.Stato)}', '${parseExcelDate(r.UltimoAggiornamento || r.Data)}')`); });
+                if (wb.Sheets["CatalogoECP"]) XLSX.utils.sheet_to_json(wb.Sheets["CatalogoECP"]).forEach(r => { const id = r.ID_ECP || r.ECP_ID || r.ID || ''; if(id) db.run(`INSERT INTO CatalogoECP VALUES ('${escapeSql(id)}', '${escapeSql(r.Prodotto_ID || r.PN)}', '${escapeSql(r.Descrizione || r.Desc)}')`); });
+                if (wb.Sheets["ApplicazioneECP"]) XLSX.utils.sheet_to_json(wb.Sheets["ApplicazioneECP"]).forEach(r => { const id = parseExcelNumber(r.ID_Applicazione || r.ID); const id_sist = parseExcelNumber(r.Sistema_ID || r.Sistema); if(id) db.run(`INSERT INTO ApplicazioneECP VALUES (${id}, ${id_sist}, '${escapeSql(r.ECP_ID)}', '${escapeSql(r.StatoApplicazione || r.Stato)}', '${parseExcelDate(r.DataApplicazione || r.DataPianificata || r.Data)}')`); });
+
+                const dataArray = db.export();
+                const blob = new Blob([dataArray], { type: "application/octet-stream" });
+                const a = document.createElement("a");
+                a.href = window.URL.createObjectURL(blob);
+                a.download = "FSM_Database.sqlite";
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+
+                statusDiv.innerText = "✅ Conversione completata! File scaricato.";
+            } catch (err) { console.error(err); statusDiv.innerText = "Errore durante la conversione."; }
+        };
+        reader.readAsArrayBuffer(file);
+    });
+  </script>
+</body>
+</html>

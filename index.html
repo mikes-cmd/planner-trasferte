@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="it" class="antialiased">
+<head>
+<meta charset="UTF-8">
+  <title>FSM - Gestione Servizi sul Campo</title>
+  <script src="libs/tailwind.js"></script>
+  <link rel="stylesheet" href="libs/leaflet.css" />
+  <script src="libs/leaflet.js"></script>
+  <link rel="stylesheet" href="libs/vis-timeline-graph2d.min.css" />
+  <script src="libs/vis-timeline-graph2d.min.js"></script>
+  <script src="libs/sql-asm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="libs/world.geojson.js"></script>
+
+  <style>
+    body { background-color: #f8fafc; color: #334155; overflow: hidden; }
+    .vis-timeline { border: 2px solid #000; border-radius: 12px; overflow: hidden; background: #ffffff; }
+    .vis-panel.vis-bottom, .vis-panel.vis-center, .vis-panel.vis-left, .vis-panel.vis-right, .vis-panel.vis-top { border-color: #cbd5e1; }
+    .vis-time-axis .vis-text { color: #475569; font-weight: 600; font-size: 12px; }
+    .vis-item { border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); font-weight: 700; font-size: 12px; padding: 4px; border: 1px solid #000; cursor: pointer; }
+    .vis-item .vis-item-content { padding: 0 4px; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .autocomplete-items, .custom-select-dropdown { position: absolute; border: 2px solid #000; z-index: 9999; top: calc(100% + 4px); left: 0; right: 0; background: white; max-height: 250px; overflow-y: auto; border-radius: 8px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.2); }
+    .autocomplete-items div { padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #f1f5f9; font-size: 14px; font-weight: 600; }
+    .autocomplete-items div:hover { background-color: #eff6ff; color: #1d4ed8; }
+    #map, #map-luoghi { height: 100%; width: 100%; border-radius: 12px; z-index: 1; border: 2px solid #000; min-height: 350px; }
+    .custom-tooltip { background: rgba(255,255,255,0.98); border: 2px solid #000; border-radius: 8px; padding: 10px 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+    .leaflet-tooltip-left:before, .leaflet-tooltip-right:before, .leaflet-tooltip-top:before, .leaflet-tooltip-bottom:before { display: none; }
+    .input-modern { width: 100%; border: 2px solid #000 !important; border-radius: 0.5rem; padding: 0.625rem; font-size: 0.875rem; background-color: #ffffff; color: #0f172a; font-weight: 700; outline: none; box-shadow: 0 2px 4px 0 rgba(0,0,0,0.05); transition: border-color 0.2s; }
+    .input-modern:focus { border-color: #2563eb !important; }
+    select.input-modern { appearance: auto; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
+    .app-screen { display: none; height: 100vh; flex-direction: column; }
+    .app-screen.active { display: flex; }
+    .modal-enter { animation: modalFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    @keyframes modalFadeIn { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+/* SPLASH SCREEN & INTRO CINEMATICA */
+    #intro-overlay {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle at center, #0a1128 0%, #020617 100%);
+      z-index: 99999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.8s;
+      overflow: hidden;
+    }
+    #intro-overlay.fade-out {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+    
+    .space-stars {
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(2px 2px at 20px 30px, #ffffff, rgba(0,0,0,0)),
+                        radial-gradient(2px 2px at 40px 70px, #ffffff, rgba(0,0,0,0)),
+                        radial-gradient(1.5px 1.5px at 90px 40px, #93c5fd, rgba(0,0,0,0)),
+                        radial-gradient(2px 2px at 160px 120px, #ffffff, rgba(0,0,0,0));
+      background-repeat: repeat;
+      background-size: 200px 200px;
+      opacity: 0.4;
+      pointer-events: none;
+    }
+
+	#earth-container {
+      position: relative;
+      width: 400px;
+      height: 400px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.7s cubic-bezier(0.7, 0, 0.84, 0), opacity 0.5s ease-in;
+    }
+	
+    #earth-canvas {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+    }
+
+    /* ONDA DI TRASFORMAZIONE (SHOCKWAVE) */
+    .shockwave {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      border: 3px solid #E30613;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .shockwave.active {
+      animation: explode 0.5s cubic-bezier(0.1, 0.8, 0.2, 1) forwards;
+    }
+    @keyframes explode {
+      0% { transform: scale(1); opacity: 1; border-width: 6px; }
+      100% { transform: scale(60); opacity: 0; border-width: 1px; }
+    }
+
+    /* LOGO LEONARDO BRANDING */
+    #brand-reveal {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transform: scale(0.65);
+      transition: opacity 1s cubic-bezier(0.16, 1, 0.3, 1), transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+      pointer-events: none;
+    }
+    #brand-reveal.visible {
+      opacity: 1;
+      transform: scale(1);
+    }
+    .vortex-blade {
+      fill: #d32f2f;
+      transition: all 0.5s ease;
+    }
+	
+	/* EFFETTO SCINTILLA SUL TESTO (SHINE/SHIMMER) */
+    .shimmer-text {
+      background: linear-gradient(110deg, #f8fafc 35%, #93c5fd 45%, #ffffff 50%, #93c5fd 55%, #f8fafc 65%);
+      background-size: 250% auto;
+      color: transparent;
+      -webkit-background-clip: text;
+      background-clip: text;
+      animation: shine 3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    }
+
+    .shimmer-text-sub {
+      background: linear-gradient(110deg, #dc2626 35%, #fca5a5 45%, #ffffff 50%, #fca5a5 55%, #dc2626 65%);
+      background-size: 250% auto;
+      color: transparent;
+      -webkit-background-clip: text;
+      background-clip: text;
+      animation: shine 3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      animation-delay: 0.35s; /* Parte in leggero ritardo rispetto al titolo */
+    }
+
+    @keyframes shine {
+      0% { background-position: 200% center; }
+      100% { background-position: -50% center; }
+    }
+	</style>
+</head>
+<body>
+
+<!-- INTRO ANIMATA CINEMATICA -->
+  <div id="intro-overlay">
+    <div class="space-stars"></div>
+    <div id="shockwave" class="shockwave"></div>
+
+    <!-- GLOBO TERRESTRE -->
+    <div id="earth-container">
+      <canvas id="earth-canvas" width="500" height="500"></canvas>
+    </div>
+
+    <!-- LOGO ISTITUZIONALE LEONARDO -->
+<!-- LOGO ISTITUZIONALE LEONARDO (VETTORIALE PURO) -->
+    <!-- LOGO ISTITUZIONALE LEONARDO -->
+    <div id="brand-reveal">
+      <svg class="w-56 h-56 mb-8 filter drop-shadow-[0_0_35px_rgba(227,6,19,0.6)]" viewBox="0 0 1000 1000" fill="none">
+        <g fill="#E30613">
+          <path d="M495 12 C440 22 335 180 290 395 C295 400 305 385 320 330 C365 170 455 35 565 6 Z"/>
+          <path d="M850 100 C780 120 540 250 390 395 C410 390 440 370 515 315 C690 195 825 155 930 200 Z"/>
+          <path d="M985 415 C960 415 540 475 385 475 C390 485 410 495 500 500 C730 515 885 525 985 545 C995 520 995 435 985 415 Z"/>
+          <path d="M890 740 C850 780 620 645 420 535 C410 550 435 580 500 635 C660 770 765 830 850 855 C885 830 900 765 890 740 Z"/>
+          <path d="M570 950 C510 990 405 870 345 700 C325 645 300 570 290 540 C300 560 325 670 380 820 C420 920 480 970 570 950 Z"/>
+          <path d="M120 750 C100 730 65 670 60 630 C65 615 150 560 225 530 C220 545 190 595 150 670 C125 720 120 740 120 750 Z"/>
+          <path d="M10 505 C5 480 20 415 35 415 C75 435 150 455 210 460 C190 480 110 500 20 510 Z"/>
+          <path d="M75 270 C80 230 145 170 160 170 C168 185 180 270 225 400 C205 380 150 310 75 270 Z"/>
+        </g>
+      </svg>
+      <h1 class="shimmer-text text-5xl md:text-7xl tracking-[0.35em] font-black uppercase ml-4">LEONARDO</h1>
+      <p class="shimmer-text-sub text-sm md:text-lg font-bold tracking-[0.40em] mt-3 uppercase">Field Service Management</p>
+    </div>
+  </div>
+  
+  <!-- SCREEN 1: HOME -->
+  <div id="screen-home" class="app-screen active bg-slate-50 items-center justify-start relative overflow-y-auto py-10 min-h-screen">
+    <div class="z-10 text-center mb-8 mt-2 px-4">
+        <h1 class="text-4xl md:text-5xl font-extrabold text-slate-900 tracking-tight mb-3">Field Service Management</h1>
+    </div>
+
+    <div class="z-10 grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl w-full px-6 mb-12">
+        <div onclick="navigaA('planner')" class="bg-white border-2 border-black shadow-md p-8 rounded-3xl cursor-pointer hover:bg-white/20 hover:scale-105 transition-all duration-300 group">
+            <div class="w-16 h-16 bg-blue-500 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-blue-500/30 group-hover:scale-110 transition-transform"><svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg></div>
+            <h2 class="text-2xl font-bold text-slate-900 mb-2">Gestione Trasferte</h2>
+            <p class="text-slate-600 text-sm leading-relaxed">Pianifica le missioni, gestisci i team sul campo, analizza la disponibilità temporale e visualizza la mappa globale.</p>
+        </div>
+
+        <div onclick="navigaA('ritorni')" class="bg-white border-2 border-black shadow-md p-8 rounded-3xl cursor-pointer hover:bg-white/20 hover:scale-105 transition-all duration-300 group">
+            <div class="w-16 h-16 bg-rose-500 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-rose-500/30 group-hover:scale-110 transition-transform"><svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg></div>
+            <h2 class="text-2xl font-bold text-slate-900 mb-2">Ritorni dal Campo</h2>
+            <p class="text-slate-600 text-sm leading-relaxed">Dashboard globale delle problematiche, analisi guasti per sottoassieme e tracking delle soluzioni.</p>
+        </div>
+
+        <div onclick="navigaA('asmaintained')" class="bg-white border-2 border-black shadow-md p-8 rounded-3xl cursor-pointer hover:bg-white/20 hover:scale-105 transition-all duration-300 group">
+            <div class="w-16 h-16 bg-amber-500 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-amber-500/30 group-hover:scale-110 transition-transform"><svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg></div>
+            <h2 class="text-2xl font-bold text-slate-900 mb-2">As-Maintained</h2>
+            <p class="text-slate-600 text-sm leading-relaxed">Stato di salute dei sottoinsiemi operativi, MTBF e matrice di implementazione ECP della flotta.</p>
+        </div>
+    </div>
+    
+    <div id="drop-zone" class="z-10 max-w-4xl w-full mx-6 backdrop-blur-md p-8 rounded-2xl shadow-xl border bg-white border-2 border-black text-center transition-all duration-300 mb-8">
+        <h3 class="text-lg font-extrabold text-slate-900 mb-2">Database Operativo (SQLite / Excel)</h3>
+        <p class="text-sm text-slate-600 font-medium mb-6 max-w-md mx-auto">Trascina qui il file di database (.sqlite) o il master Excel (.xlsx).</p>
+        
+        <div class="flex flex-col sm:flex-row justify-center gap-3 mb-5">
+            <button onclick="creaNuovoDatabase()" class="flex-1 bg-slate-700 border-2 border-black text-white font-bold px-3 py-3 rounded-xl hover:bg-slate-600 flex items-center justify-center text-sm shadow-md">Nuovo DB Vuoto</button>
+            <button onclick="collegaDatabaseSync()" class="flex-1 bg-blue-600 border-2 border-black text-white font-bold px-3 py-3 rounded-xl hover:bg-blue-700 flex items-center justify-center text-sm shadow-md">Connetti .SQLite</button>
+            <button onclick="importaDaExcelPicker()" class="flex-1 bg-emerald-600 border-2 border-black text-white font-bold px-3 py-3 rounded-xl hover:bg-emerald-700 flex items-center justify-center text-sm shadow-md">Importa .XLSX</button>
+            <button id="btn-salva-sqlite" onclick="salvaNuovoSQLite()" class="hidden flex-1 bg-purple-600 border-2 border-black text-white font-bold px-3 py-3 rounded-xl hover:bg-purple-700 flex items-center justify-center text-sm shadow-md">Salva .SQLite</button>
+            <button id="btn-rilascia-lock" onclick="rilasciaLockManuale()" class="hidden flex-1 bg-rose-600 border-2 border-black text-white font-bold px-3 py-3 rounded-xl hover:bg-rose-700 flex items-center justify-center text-sm shadow-md">Chiudi Lock</button>
+        </div>
+        
+        <div class="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-full border border-black">
+            <span class="w-2.5 h-2.5 rounded-full bg-slate-500 flex-shrink-0" id="home-status-dot"></span>
+            <span class="text-[10px] font-extrabold text-slate-800 tracking-wider uppercase" id="home-status-text">In attesa di connessione...</span>
+        </div>
+    </div>
+  </div>
+
+  <!-- SCREEN 2: GESTIONE TRASFERTE -->
+  <div id="screen-planner" class="app-screen bg-slate-50">
+    <header class="flex-shrink-0 z-40 w-full bg-white border-b-2 border-black shadow-sm">
+      <div class="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center py-3 gap-4">
+          <div class="flex items-center gap-4">
+            <button onclick="navigaA('home')" class="p-2 hover:bg-slate-200 rounded-lg transition-colors text-slate-900 border-2 border-transparent hover:border-black"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg></button>
+            <h1 class="text-xl font-extrabold text-slate-900 leading-none">Gestione Trasferte</h1>
+          </div>
+        </div>
+        <nav class="flex space-x-1 overflow-x-auto pb-2 scrollbar-hide">
+          <button onclick="switchTab('pianifica')" id="tab-btn-pianifica" class="tab-btn px-4 py-1.5 rounded-lg text-sm font-bold bg-blue-100 text-blue-800 border-2 border-transparent">Pianifica</button>
+          <button onclick="switchTab('timeline')" id="tab-btn-timeline" class="tab-btn px-4 py-1.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 border-2 border-transparent">Timeline</button>
+          <button onclick="switchTab('mappa')" id="tab-btn-mappa" class="tab-btn px-4 py-1.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 border-2 border-transparent">Missioni Attive</button>
+          <button onclick="switchTab('tabella')" id="tab-btn-tabella" class="tab-btn px-4 py-1.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 border-2 border-transparent">Registro / Modifica</button>
+          <button onclick="switchTab('team')" id="tab-btn-team" class="tab-btn px-4 py-1.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 border-2 border-transparent">Team</button>
+          <button onclick="switchTab('luoghi')" id="tab-btn-luoghi" class="tab-btn px-4 py-1.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 border-2 border-transparent">Mappa Trasferte</button>
+        </nav>
+      </div>
+    </header>
+    <main class="flex-grow w-full max-w-[1400px] mx-auto p-4 sm:p-6 overflow-hidden relative">
+      <section id="tab-pianifica" class="tab-content h-full overflow-y-auto">
+        <div class="bg-white p-5 rounded-2xl shadow-md border-2 border-black flex-shrink-0 mb-4">
+          <h2 class="text-xl font-extrabold text-slate-900 mb-5">Nuova Missione</h2>
+          <form id="form-missione" onsubmit="salvaMissione(event)" class="space-y-5">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+              <div class="relative" id="dropdown-container"><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Operatori *</label><div id="custom-select-trigger" onclick="toggleDropdown(event)" class="input-modern flex justify-between items-center cursor-pointer"><div id="custom-select-value" class="text-slate-800 font-medium">Seleziona...</div><svg class="w-4 h-4 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></div><div id="custom-select-options" class="custom-select-dropdown hidden"></div><input type="hidden" id="input-tecnico"></div>
+              <div class="relative"><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Destinazione *</label><input type="text" id="input-destinazione" autocomplete="off" class="input-modern" required /><div id="autocomplete-list" class="autocomplete-items hidden"></div></div>
+              <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Inizio *</label><input type="date" id="input-inizio" class="input-modern" required /></div>
+              <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Fine *</label><input type="date" id="input-fine" class="input-modern" required /></div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-5">
+              <div class="relative"><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Scopo</label><input type="text" id="input-scopo" class="input-modern" autocomplete="off" /></div>
+              <div class="relative"><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Piattaforma</label><input type="text" id="input-piattaforma" class="input-modern" autocomplete="off" /></div>
+              <div class="relative"><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Prodotto</label><input type="text" id="input-prodotto" class="input-modern" autocomplete="off" /></div>
+              <div class="relative"><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Part Number (PN)</label><input type="text" id="input-pn" class="input-modern" autocomplete="off" /><div id="autocomplete-pn-list" class="autocomplete-items hidden"></div></div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-5">
+              <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Serial Number</label><input type="text" id="input-serial" class="input-modern" /></div>
+              <div class="lg:col-span-2"><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Allegati Locali</label><input type="text" id="input-allegati" class="input-modern" /></div>
+              <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Allegati Aggiuntivi</label><input type="text" id="input-allegati-agg" class="input-modern" /></div>
+              <div class="flex items-end"><button type="submit" class="read-only-hide w-full bg-blue-600 text-white font-bold py-2.5 rounded-lg border-2 border-black hover:bg-blue-700 shadow-[0_4px_0_0_#000]">Assegna</button></div>
+            </div>
+          </form>
+        </div>
+        <div class="bg-white p-5 rounded-2xl shadow-md border-2 border-black flex flex-col min-h-[300px]">
+          <h2 class="text-xl font-extrabold text-slate-900 mb-0 flex-shrink-0">Impegni Operatori Selezionati</h2>
+          <div id="mini-timeline" class="flex-grow w-full rounded-xl mt-4 bg-slate-50 border-2 border-black"></div>
+        </div>
+      </section>
+
+      <section id="tab-timeline" class="tab-content hidden h-full overflow-y-auto pr-2">
+        <div class="bg-white p-5 rounded-2xl shadow-md border-2 border-black flex flex-col relative min-h-min">
+            <div class="flex justify-between items-center mb-5 gap-3">
+                <div><h2 class="text-xl font-extrabold text-slate-900">Timeline Globale Risorse</h2></div>
+                <div class="flex bg-slate-100 p-1 rounded-lg border-2 border-black">
+                  <button onclick="timelineZoom('oggi')" class="px-4 py-1 text-xs font-extrabold text-slate-800 hover:bg-white border-2 border-transparent hover:border-black rounded transition-all">Oggi</button>
+                  <button onclick="timelineZoom('mese')" class="px-4 py-1 text-xs font-extrabold text-slate-800 hover:bg-white border-2 border-transparent hover:border-black rounded transition-all">Mese</button>
+                  <button onclick="timelineZoom('trimestre')" class="px-4 py-1 text-xs font-extrabold text-slate-800 hover:bg-white border-2 border-transparent hover:border-black rounded transition-all">Trim</button>
+                  <button onclick="timelineZoom('anno')" class="px-4 py-1 text-xs font-extrabold text-slate-800 hover:bg-white border-2 border-transparent hover:border-black rounded transition-all">Anno</button>
+                </div>
+            </div>
+			<!-- BARRA FILTRI TIMELINE -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4 bg-slate-50 p-3 rounded-xl border-2 border-black">
+                <!-- Filtro Nome con autocomplete / testo libero -->
+                <div class="relative">
+                    <label class="block text-[10px] font-extrabold text-slate-700 uppercase mb-1">Cerca Operatore</label>
+                    <input type="text" id="timeline-filter-nome" oninput="aggiornaTimeline()" placeholder="Digita per filtrare..." class="input-modern py-1.5 text-xs w-full">
+                </div>
+
+                <!-- Filtro Funzione -->
+                <div>
+                    <label class="block text-[10px] font-extrabold text-slate-700 uppercase mb-1">Funzione / Reparto</label>
+                    <select id="timeline-filter-funzione" onchange="aggiornaTimeline()" class="input-modern py-1.5 text-xs w-full">
+                        <option value="">Tutte le funzioni</option>
+                    </select>
+                </div>
+
+                <!-- Filtro Competenza -->
+                <div>
+                    <label class="block text-[10px] font-extrabold text-slate-700 uppercase mb-1">Competenza</label>
+                    <select id="timeline-filter-competenza" onchange="aggiornaTimeline()" class="input-modern py-1.5 text-xs w-full">
+                        <option value="">Tutte le competenze</option>
+                    </select>
+                </div>
+
+                <!-- Reset Filtri -->
+                <div class="flex items-end">
+                    <button onclick="resetFiltriTimeline()" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold py-2 px-3 rounded-lg border-2 border-black text-xs transition-colors shadow-sm">
+                        Ripristina Tutti
+                    </button>
+                </div>
+            </div>
+            <div id="timeline" class="w-full bg-white rounded-xl border-2 border-black h-[600px]"></div>
+        </div>
+      </section>
+
+      <section id="tab-mappa" class="tab-content hidden h-full">
+        <div class="bg-white p-5 rounded-2xl shadow-md border-2 border-black h-full flex flex-col min-h-0">
+          <div class="mb-5 flex justify-between">
+              <div class="flex gap-4"><input type="date" id="map-date-picker" class="input-modern w-48" onchange="aggiornaMappa()"><button onclick="impostaMappaOggi()" class="px-5 py-2 bg-slate-100 font-extrabold text-slate-900 rounded-lg border-2 border-black shadow-[0_2px_0_0_#000]">Data Odierna</button></div>
+          </div>
+          <div class="flex gap-5 flex-grow min-h-0">
+              <div id="map" class="flex-grow shadow-inner rounded-xl z-10"></div>
+              <div class="w-64 bg-slate-50 border-2 border-black rounded-xl p-5 flex flex-col flex-shrink-0 z-20"><h3 class="text-sm font-extrabold text-slate-900 mb-3 border-b-2 border-slate-300 pb-2">Legenda</h3><ul id="map-legend-list" class="space-y-3 overflow-y-auto pr-2 pb-2"></ul></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-tabella" class="tab-content hidden h-full overflow-y-auto">
+        <div class="flex justify-between items-end mb-6 gap-4">
+            <h2 class="text-3xl font-extrabold text-slate-900 mb-1">Registro Trasferte</h2>
+            <input type="text" id="search-planner" onkeyup="filtraPlanner()" placeholder="Cerca..." class="input-modern w-80">
+        </div>
+        <div class="bg-white rounded-2xl shadow-md border-2 border-black overflow-hidden min-h-full">
+          <table class="w-full text-left text-sm text-slate-800">
+            <thead class="bg-slate-100 text-[11px] uppercase font-extrabold text-slate-700 sticky top-0 border-b-2 border-black">
+                <tr>
+                  <th onclick="sortPlanner('tecnico')" class="p-4 cursor-pointer hover:bg-slate-200 border-r border-slate-300">Operatori ↕</th>
+                  <th onclick="sortPlanner('stato')" class="p-4 cursor-pointer hover:bg-slate-200 border-r border-slate-300">Stato ↕</th>
+                  <th onclick="sortPlanner('destinazione')" class="p-4 cursor-pointer hover:bg-slate-200 border-r border-slate-300">Luogo / Scopo ↕</th>
+                  <th onclick="sortPlanner('inizio')" class="p-4 cursor-pointer hover:bg-slate-200 border-r border-slate-300">Periodo ↕</th>
+                  <th class="p-4 text-right">Azioni</th>
+                </tr>
+            </thead>
+            <tbody id="tabella-corpo" class="divide-y-2 divide-slate-200"></tbody>
+          </table>
+        </div>
+      </section>
+
+	<section id="tab-team" class="tab-content hidden h-full overflow-y-auto">
+        <div class="bg-white p-8 rounded-2xl border-2 border-black max-w-5xl mx-auto mt-4 shadow-md">
+            <h2 class="text-2xl font-extrabold text-slate-900 mb-6">Anagrafica Team</h2>
+            <div class="flex flex-col md:flex-row gap-3 mb-8">
+                <input type="text" id="nuovo-tecnico-nome" placeholder="Nome Cognome" class="input-modern md:w-1/3">
+                <input type="text" id="nuovo-tecnico-funzione" placeholder="Funzione / Ruolo" class="input-modern md:w-1/3">
+                <select id="nuovo-tecnico-competenza" class="input-modern md:w-1/4">
+                    <option value="Elettronica">Elettronica</option>
+                    <option value="Meccanica">Meccanica</option>
+                    <option value="Sistemistica">Sistemistica</option>
+                </select>
+                <button onclick="aggiungiTecnico()" class="bg-blue-600 text-white font-bold px-6 py-2.5 rounded-lg border-2 border-black shadow-[0_4px_0_0_#000]">Aggiungi</button>
+            </div>
+            <div class="overflow-x-auto border-2 border-black rounded-xl">
+                <table class="w-full text-left text-sm border-collapse">
+                    <thead class="bg-slate-100 text-[11px] uppercase font-extrabold text-slate-700 border-b-2 border-black">
+                        <tr>
+                            <th class="p-3 border-r border-slate-300">Nome e Cognome</th>
+                            <th class="p-3 border-r border-slate-300">Funzione / Reparto</th>
+                            <th class="p-3 border-r border-slate-300">Competenza</th>
+                            <th class="p-3 text-center">Azioni</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lista-team" class="divide-y-2 divide-slate-200 bg-white"></tbody>
+                </table>
+            </div>
+        </div>
+      </section>
+
+      <!-- SEZIONE MAPPA TRASFERTE E STATISTICHE GLOBALI -->
+      <section id="tab-luoghi" class="tab-content hidden h-full overflow-hidden">
+        <div class="flex flex-col h-full">
+            <div class="flex flex-col md:flex-row justify-between md:items-end mb-4 flex-shrink-0 gap-4">
+                <div>
+                    <h2 class="text-3xl font-extrabold text-slate-900 mb-1">Mappa Trasferte</h2>
+                    <p class="text-sm font-bold text-slate-500">Mappa globale dei luoghi visitati e statistiche storiche.</p>
+                </div>
+                <div class="flex flex-col">
+                    <label class="text-[10px] font-extrabold text-slate-700 uppercase mb-1">Filtro Prodotto</label>
+                    <select id="filter-mappa-prodotto" class="input-modern w-64" onchange="renderStatisticheLuoghi()">
+                        <option value="">Tutti i prodotti</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex flex-col lg:flex-row gap-5 flex-grow min-h-0">
+                <div id="map-luoghi" class="flex-grow shadow-inner rounded-xl z-10 border-2 border-black bg-slate-100"></div>
+                <div class="w-full lg:w-[400px] bg-white border-2 border-black rounded-xl p-5 flex flex-col flex-shrink-0 z-20 shadow-md">
+                    <h3 class="text-lg font-extrabold text-slate-900 mb-4 border-b-2 border-slate-300 pb-2">Visite per Destinazione</h3>
+                    <div class="relative flex-grow min-h-[300px] w-full flex items-center justify-center">
+                        <canvas id="chart-luoghi"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- SCREEN 3: RITORNI DAL CAMPO -->
+  <div id="screen-ritorni" class="app-screen bg-slate-50">
+    <header class="flex-shrink-0 z-40 w-full bg-white border-b-2 border-black shadow-sm">
+      <div class="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center gap-4 py-3">
+          <button onclick="navigaA('home')" class="p-2 hover:bg-slate-200 rounded-lg transition-colors text-slate-900 border-2 border-transparent hover:border-black"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg></button>
+          <h1 class="text-xl font-extrabold text-slate-900">Gestione Ritorni dal Campo</h1>
+        </div>
+        <nav class="flex space-x-2 pb-2">
+          <button onclick="switchTabRitorni('dash')" id="tab-btn-rit-dash" class="tab-btn-rit px-4 py-1.5 rounded-lg text-sm font-bold border-2 border-transparent transition-colors">Dashboard Trasferte</button>
+          <button onclick="switchTabRitorni('assiemi')" id="tab-btn-rit-assiemi" class="tab-btn-rit px-4 py-1.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 border-2 border-transparent transition-colors">Analisi Sottoassiemi</button>
+        </nav>
+      </div>
+    </header>
+    <main class="flex-grow w-full max-w-[1400px] mx-auto p-4 sm:p-6 overflow-y-auto">
+      
+      <!-- SOTTO-SCHEDA 1: DASHBOARD CLASSICA -->
+      <section id="view-rit-dash" class="ritorni-content block">
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
+            <div class="lg:col-span-3 flex flex-col justify-end">
+                <h2 class="text-3xl font-extrabold text-slate-900 mb-1">Dashboard Guasti</h2>
+                <input type="text" id="search-guasti" onkeyup="filtraGuasti()" placeholder="Cerca guasto..." class="input-modern w-80 max-w-full">
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border-2 border-black p-4">
+                <h3 class="text-sm font-extrabold text-slate-900 mb-2 border-b-2 border-slate-200 pb-1">Top 5 Guasti</h3>
+                <ul id="top-offenders-list" class="space-y-3 text-xs font-bold text-slate-700"></ul>
+            </div>
+        </div>
+        <div class="bg-white rounded-2xl shadow-md border-2 border-black overflow-hidden">
+          <table class="w-full text-left text-sm text-slate-800">
+            <thead class="bg-slate-100 text-[11px] uppercase font-extrabold text-slate-700 border-b-2 border-black">
+              <tr>
+                <th onclick="sortRitorni('data')" class="p-4 cursor-pointer hover:bg-slate-200 border-r border-slate-300 w-32">Data ↕</th>
+                <th onclick="sortRitorni('id_missione')" class="p-4 cursor-pointer hover:bg-slate-200 border-r border-slate-300 w-48">Missione ↕</th>
+                <th onclick="sortRitorni('codice')" class="p-4 cursor-pointer hover:bg-slate-200 border-r border-slate-300 w-48">Codice ↕</th>
+                <th onclick="sortRitorni('pn_assieme')" class="p-4 cursor-pointer hover:bg-slate-200 border-r border-slate-300 w-48">Assieme ↕</th>
+                <th class="p-4 border-r border-slate-300">Descrizione & Sintomi</th>
+                <th onclick="sortRitorni('stato')" class="p-4 cursor-pointer hover:bg-slate-200 text-center w-32">Stato ↕</th>
+              </tr>
+            </thead>
+            <tbody id="tabella-problematiche" class="divide-y-2 divide-slate-200"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- SOTTO-SCHEDA 2: ANALISI ASSIEMI -->
+      <section id="view-rit-assiemi" class="ritorni-content hidden">
+        <div class="flex flex-col lg:flex-row justify-between lg:items-end border-b-2 border-black pb-4 mb-6 gap-4">
+            <div>
+                <h2 class="text-2xl font-extrabold text-slate-900 mb-1">Analisi Guasti per Sottoassieme</h2>
+                <p class="text-sm font-bold text-slate-500">Seleziona prodotto e sottoassieme per visualizzare lo storico guasti e la distribuzione delle cause.</p>
+            </div>
+            <div class="flex flex-wrap items-end gap-3 bg-slate-100 p-3 rounded-xl border border-slate-300">
+                <div>
+                    <label class="block text-[10px] font-extrabold text-slate-700 uppercase mb-1">Prodotto (PN) *</label>
+                    <select id="rit-assiemi-pn" class="input-modern py-1.5 text-sm w-48" onchange="aggiornaFiltroAssiemi()"><option value="">-- Seleziona --</option></select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-extrabold text-slate-700 uppercase mb-1">Sottoassieme</label>
+                    <select id="rit-assiemi-nome" class="input-modern py-1.5 text-sm w-48" onchange="renderAnalisiAssiemi()"><option value="">-- Tutti --</option></select>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-2 bg-white rounded-2xl shadow-md border-2 border-black overflow-hidden h-fit">
+                <table class="w-full text-left text-sm text-slate-800">
+                    <thead class="bg-slate-100 text-[11px] uppercase font-extrabold text-slate-700 border-b-2 border-black">
+                    <tr>
+                        <th class="p-4 border-r border-slate-300 w-32">Data</th>
+                        <th class="p-4 border-r border-slate-300 w-48">Missione</th>
+                        <th class="p-4 border-r border-slate-300 w-48">Codice Guasto</th>
+                        <th class="p-4 border-r border-slate-300">Descrizione & Sintomi</th>
+                        <th class="p-4 text-center w-24">Stato</th>
+                    </tr>
+                    </thead>
+                    <tbody id="tabella-assiemi" class="divide-y-2 divide-slate-200">
+                        <tr><td colspan="5" class="p-8 text-center text-slate-500 font-bold">Utilizza i filtri per visualizzare i guasti.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="bg-white rounded-2xl shadow-md border-2 border-black p-5 flex flex-col h-fit">
+                <h3 class="text-lg font-extrabold text-slate-900 mb-4 border-b-2 border-slate-300 pb-2">Distribuzione Cause (Codici)</h3>
+                <div class="relative w-full h-[300px] flex items-center justify-center" id="chart-assiemi-container">
+                    <canvas id="chart-assiemi"></canvas>
+                </div>
+            </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- SCREEN 4: AS-MAINTAINED -->
+  <div id="screen-asmaintained" class="app-screen bg-slate-50">
+    <header class="flex-shrink-0 z-40 w-full bg-white border-b-2 border-black shadow-sm">
+      <div class="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center gap-4 py-3">
+          <button onclick="navigaA('home')" class="p-2 hover:bg-slate-200 rounded-lg transition-colors border-2 border-transparent hover:border-black"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg></button>
+          <h1 class="text-xl font-extrabold text-slate-900">Gestione As-Maintained</h1>
+        </div>
+        <nav class="flex space-x-2 pb-2">
+          <button onclick="switchTabAsMaintained('salute')" id="tab-btn-salute" class="tab-btn-asm px-4 py-1.5 rounded-lg text-sm font-bold border-2 border-transparent">Stato di Salute (Sottoinsiemi)</button>
+          <button onclick="switchTabAsMaintained('ecp')" id="tab-btn-ecp" class="tab-btn-asm px-4 py-1.5 rounded-lg text-sm font-bold border-2 border-transparent">Stato Implementazione ECP</button>
+        </nav>
+      </div>
+    </header>
+
+    <main class="flex-grow w-full max-w-[1400px] mx-auto p-4 overflow-y-auto">
+      
+      <!-- TAB SALUTE (FILTRABILE) -->
+      <section id="tab-salute" class="tab-content-asm block bg-white rounded-2xl shadow-md border-2 border-black p-6">
+        <div class="flex flex-col lg:flex-row justify-between lg:items-end border-b-2 border-black pb-4 mb-6 gap-4">
+            <div>
+                <h2 class="text-2xl font-extrabold text-slate-900 mb-1">Stato Salute Sistemi</h2>
+                <p class="text-sm font-bold text-slate-500">Seleziona un Part Number per visualizzare lo stato della flotta (MTBF calcolato su giorni solari).</p>
+            </div>
+            <div class="flex flex-wrap items-end gap-3 bg-slate-100 p-3 rounded-xl border border-slate-300">
+                <div>
+                    <label class="block text-[10px] font-extrabold text-slate-700 uppercase mb-1">Part Number (PN) *</label>
+                    <select id="asm-salute-pn" class="input-modern py-1.5 text-sm w-36" onchange="aggiornaFiltroSN('salute')"><option value="">-- Seleziona --</option></select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-extrabold text-slate-700 uppercase mb-1">Serial Number</label>
+                    <select id="asm-salute-sn" class="input-modern py-1.5 text-sm w-32"><option value="">-- Tutti --</option></select>
+                </div>
+                <div class="flex items-center h-full pb-2 px-2">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="asm-salute-nosub" class="w-4 h-4 accent-blue-600 border-black rounded">
+                        <span class="text-xs font-bold text-slate-800">Solo globale</span>
+                    </label>
+                </div>
+                <input type="text" id="search-salute" onkeyup="filtraSalute()" placeholder="Ricerca interna..." class="input-modern py-1.5 text-sm w-40">
+                <button onclick="renderTabellaSalute()" class="bg-blue-600 text-white font-bold px-4 py-1.5 rounded-lg border-2 border-black hover:bg-blue-700 text-sm shadow-[0_2px_0_0_#000]">Estrai</button>
+            </div>
+        </div>
+        
+        <div id="tabella-salute-container">
+            <p class="text-slate-500 font-bold text-center mt-6">Utilizza i filtri in alto per estrarre i dati.</p>
+        </div>
+      </section>
+
+      <!-- TAB MATRICE ECP (FILTRABILE) -->
+      <section id="tab-ecp" class="tab-content-asm hidden bg-white rounded-2xl shadow-md border-2 border-black p-6">
+        <div class="flex flex-col lg:flex-row justify-between lg:items-end border-b-2 border-black pb-4 mb-6 gap-4">
+            <div>
+                <h2 class="text-2xl font-extrabold text-slate-900 mb-1">Stato Implementazione ECP</h2>
+                <p class="text-sm font-bold text-slate-500">Stato di implementazione delle modifiche ingegneristiche.</p>
+            </div>
+            <div class="flex flex-wrap items-end gap-3 bg-slate-100 p-3 rounded-xl border border-slate-300">
+                <div>
+                    <label class="block text-[10px] font-extrabold text-slate-700 uppercase mb-1">Part Number (PN) *</label>
+                    <select id="asm-ecp-pn" class="input-modern py-1.5 text-sm w-36" onchange="aggiornaFiltroSN('ecp')"><option value="">-- Seleziona --</option></select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-extrabold text-slate-700 uppercase mb-1">Serial Number</label>
+                    <select id="asm-ecp-sn" class="input-modern py-1.5 text-sm w-32"><option value="">-- Tutti --</option></select>
+                </div>
+                <input type="text" id="search-ecp" onkeyup="filtraECP()" placeholder="Ricerca interna..." class="input-modern py-1.5 text-sm w-40">
+                <button onclick="renderMatriceECP()" class="bg-blue-600 text-white font-bold px-4 py-1.5 rounded-lg border-2 border-black hover:bg-blue-700 text-sm shadow-[0_2px_0_0_#000]">Estrai Matrice</button>
+            </div>
+        </div>
+        
+        <div class="overflow-x-auto" id="matrice-ecp-container">
+            <p class="text-slate-500 font-bold text-center mt-6">Utilizza i filtri in alto per estrarre i dati.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- MODALI -->
+  <div id="modal-modifica-missione" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm overflow-y-auto h-full w-full z-[100] flex items-start justify-center p-4 py-10">
+    <div class="modal-enter p-8 border-4 border-black w-full max-w-3xl rounded-2xl bg-white relative">
+      <button onclick="chiudiModale()" class="absolute top-5 right-5 text-slate-800 bg-slate-100 border-2 border-black rounded-lg p-1">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+      </button>
+      <h3 class="text-2xl font-extrabold text-slate-900 mb-6 border-b-2 border-slate-200 pb-2">Modifica Trasferta</h3>
+      <form id="form-modifica" onsubmit="salvaModificaMissione(event)" class="space-y-5">
+        <input type="hidden" id="mod-id">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">ID Operatori *</label><div id="mod-tecnici-list" class="border-2 border-black rounded-lg p-3 max-h-32 overflow-y-auto bg-slate-50 space-y-1"></div></div>
+            <div class="relative"><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Luogo ID *</label><input type="text" id="mod-destinazione" class="input-modern" required><div id="mod-autocomplete-list" class="autocomplete-items hidden"></div></div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div class="md:col-span-3"><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Scopo</label><input type="text" id="mod-scopo" class="input-modern"></div>
+            <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Inizio *</label><input type="date" id="mod-inizio" class="input-modern" required></div>
+            <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Fine *</label><input type="date" id="mod-fine" class="input-modern" required></div>
+            <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Piattaforma</label><input type="text" id="mod-piattaforma" class="input-modern"></div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Prodotto</label><input type="text" id="mod-prodotto" class="input-modern"></div>
+            <div class="relative"><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">PN</label><input type="text" id="mod-pn" class="input-modern"><div id="mod-autocomplete-pn-list" class="autocomplete-items hidden"></div></div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Serial Number</label><input type="text" id="mod-serial" class="input-modern"></div>
+            <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Allegati Locali</label><input type="text" id="mod-allegati" class="input-modern"></div>
+            <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Allegati Agg.</label><input type="text" id="mod-allegati-agg" class="input-modern"></div>
+        </div>
+        <div id="mod-alert" class="hidden p-3 text-[11px] font-bold rounded-lg bg-red-50 text-red-800 border-2 border-red-500"></div>
+        <div class="flex justify-end gap-4 mt-8 pt-4 border-t-2 border-slate-200">
+          <button type="button" onclick="chiudiModale()" class="px-6 py-2 bg-slate-100 border-2 border-black font-extrabold rounded-xl shadow-[0_3px_0_0_#000]">Annulla</button>
+          <button type="submit" class="px-6 py-2 bg-blue-600 text-white font-extrabold border-2 border-black rounded-xl shadow-[0_3px_0_0_#000]">Salva Modifiche</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="modal-dettaglio-missione" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-sm overflow-y-auto h-full w-full z-[100] flex items-start justify-center p-4 py-10">
+    <div class="modal-enter p-8 border-4 border-black w-full max-w-3xl rounded-2xl bg-white relative">
+      <button onclick="document.getElementById('modal-dettaglio-missione').classList.add('hidden')" class="absolute top-5 right-5 text-slate-800 bg-slate-100 border-2 border-black rounded-lg p-1"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+      <div id="dettaglio-missione-content"></div>
+    </div>
+  </div>
+
+  <div id="modal-segnala-problema" class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-md overflow-y-auto h-full w-full z-[110] flex items-start justify-center p-4 py-10">
+    <div class="modal-enter p-8 border-4 border-black w-full max-w-2xl rounded-2xl bg-white relative">
+      <button onclick="document.getElementById('modal-segnala-problema').classList.add('hidden')" class="absolute top-5 right-5 text-slate-800 bg-slate-100 border-2 border-black rounded-lg p-1"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+      <h3 class="text-2xl font-extrabold text-slate-900 mb-1">Segnala Problema</h3>
+      <p id="segnala-prob-missione-label" class="text-sm font-bold text-slate-500 mb-6 pb-3 border-b-2 border-slate-200"></p>
+      <form onsubmit="salvaProblematicaSingola(event)" class="space-y-5">
+          <input type="hidden" id="segnala-prob-missione-id">
+          <div class="grid grid-cols-2 gap-5">
+              <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Data *</label><input type="date" id="segnala-prob-data" class="input-modern" required></div>
+              <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Codice Guasto</label><select id="segnala-prob-codice" class="input-modern"></select></div>
+          </div>
+          <div class="grid grid-cols-2 gap-5">
+              <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">PN Assieme</label><input type="text" id="segnala-prob-pn" class="input-modern"></div>
+              <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Nome Assieme</label><input type="text" id="segnala-prob-nome-assieme" class="input-modern"></div>
+          </div>
+          <div>
+              <label class="flex items-center text-xs font-extrabold text-slate-700 uppercase mb-2">
+                  Descrizione *
+                  <button type="button" onclick="applicaMagiaAI()" class="ml-3 text-[10px] bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-600 px-2 py-0.5 rounded shadow-sm transition-colors flex items-center gap-1">✨ Usa Copilot AI</button>
+                  <span id="ai-loading" class="hidden text-[10px] text-purple-600 ml-2 animate-pulse">Elaborazione...</span>
+              </label>
+              <textarea id="segnala-prob-desc" rows="3" class="input-modern" required></textarea>
+          </div>
+          <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Sintomi</label><textarea id="segnala-prob-sintomi" rows="2" class="input-modern"></textarea></div>
+          <div class="flex justify-end pt-4 border-t-2 border-slate-200 mt-6"><button type="submit" class="w-full bg-rose-600 text-white font-extrabold py-3 rounded-xl border-2 border-black shadow-[0_4px_0_0_#000]">Registra Guasto</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="modal-dettaglio-problema" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-sm overflow-y-auto h-full w-full z-[100] flex items-start justify-center p-4 py-10">
+    <div class="modal-enter p-8 border-4 border-black w-full max-w-4xl rounded-2xl bg-white relative">
+      <button onclick="document.getElementById('modal-dettaglio-problema').classList.add('hidden')" class="absolute top-5 right-5 text-slate-800 bg-slate-100 border-2 border-black rounded-lg p-1"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+      <h3 class="text-2xl font-extrabold text-slate-900 mb-2 border-b-2 border-slate-200 pb-3">Dettaglio Problema e Interventi</h3>
+      <div id="dettaglio-problema-content" class="text-sm text-slate-800 mt-5"></div>
+      <div class="mt-8 border-t-2 border-black pt-6">
+          <h4 class="text-lg font-extrabold text-slate-900 mb-4">Aggiungi Nuovo Intervento</h4>
+          <form onsubmit="salvaSoluzione(event)" class="space-y-4 bg-slate-50 p-6 rounded-2xl border-2 border-black shadow-inner">
+              <input type="hidden" id="sol-problema">
+              <div class="grid grid-cols-2 gap-5">
+                  <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Data *</label><input type="date" id="sol-data" class="input-modern" required></div>
+                  <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Esito *</label>
+                      <select id="sol-esito" class="input-modern" required><option value="Positivo">Positivo</option><option value="Negativo">Negativo</option></select>
+                  </div>
+              </div>
+              <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Azione Eseguita *</label><textarea id="sol-azione" rows="3" class="input-modern" required></textarea></div>
+              <button type="submit" class="read-only-hide w-full bg-emerald-600 text-white font-extrabold py-3 rounded-xl border-2 border-black shadow-[0_4px_0_0_#000]">Archivia Intervento</button>
+          </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      if (typeof require !== 'undefined') {
+        try {
+          const path = require('path');
+          const fs = require('fs');
+          const jscPath = path.join(__dirname, 'logic.jsc');
+          if (fs.existsSync(jscPath)) {
+            const bytenode = require('bytenode');
+            const bytecodeBuffer = fs.readFileSync(jscPath);
+            bytenode.runBytecode(bytecodeBuffer);
+            return;
+          }
+        } catch (err) { console.warn('Esecuzione bytecode fallita, fallback a logic.js:', err); }
+      }
+      document.write('<script src="logic.js"><\/script>');
+    })();
+  </script>
+</body>
+</html>
