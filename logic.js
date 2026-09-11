@@ -802,7 +802,7 @@ function renderTabellaSalute() {
     const pnFiltro = document.getElementById('asm-salute-pn').value;
     const snFiltro = document.getElementById('asm-salute-sn').value;
     const nascondiSub = document.getElementById('asm-salute-nosub').checked;
-    const soloGuasti = document.getElementById('asm-salute-sologuasti')?.checked; // <-- NUOVO
+    const soloGuasti = document.getElementById('asm-salute-sologuasti')?.checked;
     const container = document.getElementById('tabella-salute-container');
 
     if(!pnFiltro) { container.innerHTML = '<div class="p-6 text-center font-bold text-slate-500">Seleziona un Part Number per visualizzare i dati.</div>'; return; }
@@ -812,7 +812,6 @@ function renderTabellaSalute() {
     if(sistemi.length === 0) { container.innerHTML = '<div class="p-6 text-center font-bold text-slate-500">Nessun sistema trovato per i criteri selezionati.</div>'; return; }
 
     const rowsHTML = sistemi.map(sistema => {
-        // FILTRO: mostriamo solo gli assiemi attualmente "a bordo" (escludiamo quelli sbarcati/rottamati/in riparazione)
         let subsAttivi = sottoassiemiDeployati.filter(s => 
             s.pn_padre === sistema.prodottoId && 
             s.sn_padre === sistema.serialNumber &&
@@ -823,7 +822,6 @@ function renderTabellaSalute() {
             subsAttivi = subsAttivi.filter(s => String(s.stato).toLowerCase() !== 'operativo');
         }
         
-        // Se abbiamo filtrato per "Solo Guasti" e questo sistema non ne ha, lo saltiamo dall'HTML
         if (soloGuasti && subsAttivi.length === 0 && calcolaStatoGlobale(sistema.prodottoId, sistema.serialNumber).stato === 'Operativo') return '';
 		
         const subs = sottoassiemiDeployati.filter(s => s.pn_padre === sistema.prodottoId && s.sn_padre === sistema.serialNumber);
@@ -835,8 +833,6 @@ function renderTabellaSalute() {
         if (nascondiSub) {
             const badgeGlobale = `<span class="text-[10px] font-extrabold px-2 py-1 rounded border ${globale.colore}">${globale.stato.toUpperCase()}</span>`;
             
-            // Trova tutti i guasti associati ai sottoassiemi di questo sistema
-            // Trova tutti i guasti associati ai sottoassiemi di questo sistema con match esatto PN/SN
             const guastiSistema = problematiche.filter(p => subs.some(s => 
                 String(s.pn_sub).trim().toLowerCase() === String(p.pn_assieme).trim().toLowerCase() &&
                 String(s.sn_sub).trim().toLowerCase() === String(p.sn_assieme).trim().toLowerCase()
@@ -848,20 +844,26 @@ function renderTabellaSalute() {
             const linkMiss = missSistema.length > 0 ? `<button onclick="apriDettaglioMissione('${missSistema[0]}');" class="text-[10px] bg-blue-100 hover:bg-blue-200 border border-blue-600 text-blue-900 px-2 py-1.5 rounded font-bold shadow-sm transition-colors cursor-pointer w-full text-center">${missSistema.length} Trasferte Associate</button>` : '<span class="text-slate-400 text-xs">-</span>';
 
             return `
-            <div class="salute-row grid grid-cols-12 hover:bg-slate-50 transition-colors items-stretch border-t border-slate-200" data-search="${searchStr}">
-                <div class="col-span-3 p-4 border-r border-slate-300 flex flex-col pt-4">
+            <div class="salute-row flex flex-col lg:grid lg:grid-cols-12 hover:bg-slate-50 transition-colors items-stretch border-t border-slate-200" data-search="${searchStr}">
+                <div class="lg:col-span-3 p-4 border-b lg:border-b-0 lg:border-r border-slate-300 flex flex-col pt-4 bg-slate-50 lg:bg-transparent">
                     <b class="text-slate-900 block text-sm">${sistema.piattaforma}</b>
                     <div><span class="text-[11px] font-mono font-extrabold bg-white border border-slate-400 text-slate-800 px-1.5 py-0.5 rounded mt-1.5 inline-block">SN: ${sistema.serialNumber}</span></div>
                     <div>${badgeMTBFSist}</div>
                 </div>
-                <div class="col-span-9 flex flex-col justify-center">
-                    <div class="grid grid-cols-9 items-center min-h-[44px]">
-                        <div class="col-span-4 p-2 pl-4 pr-4 flex justify-between items-center border-r border-slate-200">
+                <div class="lg:col-span-9 flex flex-col justify-center">
+                    <div class="flex flex-col lg:grid lg:grid-cols-9 lg:items-center min-h-[44px] p-3 lg:p-0 gap-3 lg:gap-0">
+                        <div class="w-full lg:col-span-4 lg:p-2 lg:pl-4 lg:pr-4 flex justify-between items-center lg:border-r border-slate-200">
                             <span class="text-xs font-bold text-slate-800 italic">Vista aggregata sistema</span>
                             ${badgeGlobale}
                         </div>
-                        <div class="col-span-2 p-2 px-4 border-r border-slate-200 flex justify-center items-center h-full">${linkGuasti}</div>
-                        <div class="col-span-3 p-2 px-4 pr-4 flex justify-center items-center h-full">${linkMiss}</div>
+                        <!-- AZIONI MOBILE -->
+                        <div class="flex lg:hidden w-full justify-between items-center border-t border-slate-200 pt-3">
+                            <div class="w-1/2 pr-2">${linkGuasti}</div>
+                            <div class="w-1/2 pl-2">${linkMiss}</div>
+                        </div>
+                        <!-- AZIONI DESKTOP -->
+                        <div class="hidden lg:flex lg:col-span-2 p-2 px-4 border-r border-slate-200 justify-center items-center h-full">${linkGuasti}</div>
+                        <div class="hidden lg:flex lg:col-span-3 p-2 px-4 pr-4 justify-center items-center h-full">${linkMiss}</div>
                     </div>
                 </div>
             </div>`;
@@ -876,7 +878,6 @@ function renderTabellaSalute() {
                     const anagraficaSub = sottoassiemi.find(sa => sa.PN_Sottoassieme === sub.pn_sub);
                     const nomeSub = anagraficaSub ? anagraficaSub.NomeSottoassieme : sub.pn_sub;
 
-                    // LOGICA PURA: Conta quante volte ricorre l'esatta coppia PN e SN nella tabella Problemi
                     const guastiSub = problematiche.filter(p => {
                         return String(p.pn_assieme).trim().toLowerCase() === String(sub.pn_sub).trim().toLowerCase() && 
                                String(p.sn_assieme).trim().toLowerCase() === String(sub.sn_sub).trim().toLowerCase();
@@ -884,24 +885,21 @@ function renderTabellaSalute() {
                     
                     const hasGuasti = guastiSub.length > 0;
                     
-                    // Mostra il numero dei guasti (o un trattino se 0)
                     const testoGuasti = hasGuasti 
                         ? `<span class="text-[11px] font-extrabold text-rose-600 bg-rose-50 border border-rose-300 px-3 py-1 rounded-md shadow-sm select-none" title="Doppio clic sulla riga per vedere i dettagli">${guastiSub.length} Guasti</span>` 
                         : '<span class="text-slate-400 text-xs font-bold select-none">-</span>';
 
-                    // Aggiunge l'evento doppio click all'intera riga se ci sono guasti
                     const dblClickEvent = hasGuasti ? `ondblclick="apriStoricoGuastiAssieme('${sub.pn_sub}', '${sub.sn_sub}')"` : '';
                     const hoverClass = hasGuasti ? 'cursor-pointer hover:bg-rose-50/40 transition-colors' : '';
 						
-                    // PULSANTE LRU SWAP (con stopPropagation per non far scattare il doppio clic della riga)
                     const linkSwap = `<button onclick="event.stopPropagation(); apriSostituzioneLRU('${sistema.prodottoId}', '${sistema.serialNumber}', '${sub.pn_sub}', '${sub.sn_sub}');" class="text-[10px] bg-blue-50 hover:bg-blue-100 border border-blue-400 text-blue-800 px-3 py-1.5 rounded font-bold shadow-sm transition-colors w-full flex items-center justify-center gap-1">🔄 Swap LRU</button>`;
 
                     const stats = calcolaMTBFAssieme(sub.pn_sub);
                     const badgeMTBF = `<span class="text-[9px] font-extrabold text-blue-600 bg-white border border-blue-300 px-1.5 py-0.5 rounded shadow-sm inline-block mt-1">MTBF: ${stats.mtbf} gg</span>`;
 
                     return `
-                    <div ${dblClickEvent} class="grid grid-cols-9 border-t border-slate-100 first:border-0 items-center min-h-[44px] ${hoverClass}">
-                        <div class="col-span-4 p-2 pl-4 pr-4 flex justify-between items-center border-r border-slate-200">
+                    <div ${dblClickEvent} class="flex flex-col lg:grid lg:grid-cols-9 border-t border-slate-100 first:border-0 lg:items-center min-h-[44px] ${hoverClass} p-3 lg:p-0 gap-3 lg:gap-0">
+                        <div class="w-full lg:col-span-4 lg:p-2 lg:pl-4 lg:pr-4 flex justify-between items-center lg:border-r border-slate-200">
                             <div class="flex flex-col items-start">
                                 <span class="text-xs font-bold text-slate-800 pointer-events-none">${nomeSub} (PN: ${sub.pn_sub})</span>
                                 <div><span class="text-[9px] font-mono text-slate-500 font-extrabold mt-0.5 block pointer-events-none">SN: ${sub.sn_sub}</span></div>
@@ -909,10 +907,21 @@ function renderTabellaSalute() {
                             </div>
                             <span class="text-[10px] font-extrabold px-1.5 py-0.5 rounded border ${bg} uppercase pointer-events-none">${sub.stato}</span>
                         </div>
-                        <div class="col-span-2 p-2 px-4 border-r border-slate-200 flex justify-center items-center h-full">
+                        
+                        <!-- AZIONI MOBILE -->
+                        <div class="flex lg:hidden w-full justify-between items-center border-t border-slate-200 pt-3">
+                            <div>${testoGuasti}</div>
+                            <div class="flex gap-2">
+                                ${hasGuasti ? `<button onclick="event.stopPropagation(); apriStoricoGuastiAssieme('${sub.pn_sub}', '${sub.sn_sub}')" class="text-[10px] bg-rose-100 text-rose-900 border border-rose-300 px-3 py-1.5 rounded font-bold shadow-sm">Vedi Storico</button>` : ''}
+                                ${linkSwap}
+                            </div>
+                        </div>
+
+                        <!-- AZIONI DESKTOP -->
+                        <div class="hidden lg:flex lg:col-span-2 p-2 px-4 border-r border-slate-200 justify-center items-center h-full">
                             ${testoGuasti}
                         </div>
-                        <div class="col-span-3 p-2 px-4 pr-4 flex justify-center items-center h-full">
+                        <div class="hidden lg:flex lg:col-span-3 p-2 px-4 pr-4 justify-center items-center h-full">
                             <div class="flex w-full justify-center">
                                 ${linkSwap}
                             </div>
@@ -921,13 +930,13 @@ function renderTabellaSalute() {
                 }).join('');
 
             return `
-            <div class="salute-row grid grid-cols-12 hover:bg-slate-50 transition-colors items-stretch border-t border-slate-200" data-search="${searchStr}">
-                <div class="col-span-3 p-4 border-r border-slate-300 flex flex-col pt-4">
+            <div class="salute-row flex flex-col lg:grid lg:grid-cols-12 hover:bg-slate-50 transition-colors items-stretch border-t border-slate-200" data-search="${searchStr}">
+                <div class="lg:col-span-3 p-4 border-b lg:border-b-0 lg:border-r border-slate-300 flex flex-col pt-4 bg-slate-50 lg:bg-transparent">
                     <b class="text-slate-900 block text-sm">${sistema.piattaforma}</b>
                     <div><span class="text-[11px] font-mono font-extrabold bg-white border border-slate-400 text-slate-800 px-1.5 py-0.5 rounded mt-1.5 inline-block">SN: ${sistema.serialNumber}</span></div>
                     <div>${badgeMTBFSist}</div>
                 </div>
-                <div class="col-span-9 flex flex-col justify-center">${subRowsHTML}</div>
+                <div class="lg:col-span-9 flex flex-col justify-center">${subRowsHTML}</div>
             </div>`;
         }
     }).join('');
@@ -937,18 +946,17 @@ function renderTabellaSalute() {
         <h3 class="text-base font-extrabold text-white bg-slate-800 px-4 py-2 flex items-center justify-between">
             <span>Prodotto Base PN: <span class="text-blue-300 font-mono">${pnFiltro}</span></span>
         </h3>
-        <div class="overflow-x-auto p-4">
-            <div class="border-2 border-black rounded-lg overflow-hidden flex flex-col bg-white shadow-sm">
+        <div class="overflow-x-auto p-0 lg:p-4">
+            <div class="lg:border-2 lg:border-black lg:rounded-lg overflow-hidden flex flex-col bg-white lg:shadow-sm">
                 
-                <!-- INTESTAZIONE TABELLA BILANCIATA (3 + 4 + 2 + 3 = 12) -->
-                <div class="grid grid-cols-12 bg-slate-100 text-[11px] uppercase font-extrabold text-slate-700 border-b-2 border-black">
+                <div class="hidden lg:grid grid-cols-12 bg-slate-100 text-[11px] uppercase font-extrabold text-slate-700 border-b-2 border-black">
                     <div class="col-span-3 p-3 pl-4 border-r border-slate-300">Piattaforma / SN Base</div>
                     <div class="col-span-4 p-3 border-r border-slate-300">Sottoassiemi & Stato</div>
                     <div class="col-span-2 p-3 border-r border-slate-300 text-center">Guasti Correlati</div>
                     <div class="col-span-3 p-3 text-center pr-4">Azioni</div>
                 </div>
                 
-                <div class="divide-y-2 divide-slate-200">
+                <div class="divide-y-4 lg:divide-y-2 divide-slate-200">
                     ${rowsHTML}
                 </div>
             </div>
@@ -989,9 +997,10 @@ function renderMatriceECP() {
 
             return `
             <td ${onDblClick}>
-                <div class="flex flex-col items-center justify-center p-2 rounded border ${bg} h-full min-h-[60px] shadow-sm">
+                <div class="flex flex-col items-center justify-center p-2 rounded border ${bg} h-full min-h-[60px] shadow-sm relative">
                     <span class="text-[10px] font-extrabold uppercase block tracking-wider">${icon} ${stato}</span>
                     ${data && data !== 'undefined' ? `<span class="text-[11px] font-bold block mt-1.5 opacity-80">${data}</span>` : '<span class="text-[10px] opacity-40 mt-1 block">-</span>'}
+                    ${missId && missId !== 0 ? `<button onclick="event.stopPropagation(); apriDettaglioMissione('${missId}')" class="lg:hidden mt-2 w-full bg-blue-50 border border-blue-400 text-blue-800 rounded font-bold shadow-sm text-[9px] py-1 transition-colors">Apri Miss.</button>` : ''}
                 </div>
             </td>`;
         }).join('');
@@ -1077,10 +1086,9 @@ function renderAnalisiAssiemi() {
         return; 
     }
 
-	const statoFiltro = document.getElementById('rit-assiemi-stato')?.value || '';
+    const statoFiltro = document.getElementById('rit-assiemi-stato')?.value || '';
     const txtSearch = (document.getElementById('rit-assiemi-search')?.value || '').toLowerCase();
 
-    // Filtra le problematiche associate al prodotto (tramite la missione)
     let filtered = problematiche.filter(p => {
         const m = missioni.find(x => String(x.id) === String(p.id_missione));
         return m && String(m.prodottoId).trim().toLowerCase() === String(pnProdotto).trim().toLowerCase();
@@ -1088,7 +1096,6 @@ function renderAnalisiAssiemi() {
 
     if(pnSub) filtered = filtered.filter(p => String(p.pn_assieme).trim().toLowerCase() === String(pnSub).trim().toLowerCase());
 
-    // Applicazione dei due nuovi filtri
     filtered = filtered.filter(p => {
         const m = missioni.find(x => String(x.id) === String(p.id_missione)) || {destinazione: '', tecnico: ''};
         const sol = soluzioni.filter(x => String(x.id_problema) === String(p.id));
@@ -1112,18 +1119,28 @@ function renderAnalisiAssiemi() {
         const sol = soluzioni.filter(x => String(x.id_problema) === String(p.id));
         const isRisolto = sol.some(x => String(x.esito).trim().toLowerCase() === 'positivo' || String(x.esito).trim().toLowerCase() === 'risolto');
         const statoHtml = isRisolto ? `<span class="px-2 py-1 bg-emerald-100 text-emerald-900 border-2 border-emerald-600 text-[10px] font-extrabold rounded">CHIUSO</span>` : `<span class="px-2 py-1 bg-rose-100 text-rose-900 border-2 border-rose-600 text-[10px] font-extrabold rounded">APERTO</span>`;
-		
+        
         const codId = String(p.codice || 'N/D').trim();
         const codDesc = getDescrizioneCodiceDalDB(codId);
         const strCodice = `<div class="flex flex-col"><span class="font-mono font-extrabold text-slate-900 text-xs">${codId}</span>${codDesc ? `<span class="text-[11px] font-semibold text-slate-600 leading-tight mt-1">${codDesc}</span>` : ''}</div>`;
-		
+        
         const anagraficaSub = sottoassiemi.find(sa => String(sa.PN_Sottoassieme).trim().toLowerCase() === String(p.pn_assieme).trim().toLowerCase());
         const nomeSub = anagraficaSub ? anagraficaSub.NomeSottoassieme : (p.nome_assieme || 'N/D');
         const strDesc = `<div class="mb-2"><span class="text-[10px] uppercase font-bold text-slate-400">Descrizione</span><br><b class="text-slate-900 text-xs">${p.desc || 'N/D'}</b></div><div><span class="text-[10px] uppercase font-bold text-slate-400">Sintomi</span><br><span class="text-xs font-bold text-slate-700">${p.sintomi || 'N/D'}</span></div>`;
         
-        return `<tr ondblclick="apriDettaglioProblema('${p.id}')" class="hover:bg-blue-50 transition-colors cursor-pointer"><td class="p-4 pl-6 align-top border-r border-slate-300"><span class="text-sm text-slate-900 font-extrabold">${p.data}</span><br><span class="text-[9px] font-mono text-slate-500 font-extrabold mt-1 block">Sub: ${nomeSub}</span></td><td class="p-4 text-xs align-top border-r border-slate-300"><b class="text-slate-900 text-sm">${m.destinazione}</b><br><span class="text-slate-700 font-bold">${m.tecnico.replace(/;/g, ', ')}</span></td><td class="p-4 text-xs align-top bg-slate-50 border-r border-slate-300">${strCodice}</td><td class="p-4 text-xs align-top border-r border-slate-300">${strDesc}</td><td class="p-4 text-center align-top">${statoHtml}</td></tr>`;
+        return `<tr ondblclick="apriDettaglioProblema('${p.id}')" class="hover:bg-blue-50 transition-colors cursor-pointer">
+            <td class="p-4 pl-6 align-top border-r border-slate-300 min-w-[120px]"><span class="text-sm text-slate-900 font-extrabold">${p.data}</span><br><span class="text-[9px] font-mono text-slate-500 font-extrabold mt-1 block">Sub: ${nomeSub}</span></td>
+            <td class="p-4 text-xs align-top border-r border-slate-300 min-w-[150px]"><b class="text-slate-900 text-sm">${m.destinazione}</b><br><span class="text-slate-700 font-bold">${m.tecnico.replace(/;/g, ', ')}</span></td>
+            <td class="p-4 text-xs align-top bg-slate-50 border-r border-slate-300 min-w-[160px]">${strCodice}</td>
+            <td class="p-4 text-xs align-top border-r border-slate-300">${strDesc}</td>
+            <td class="p-4 text-center align-top min-w-[120px]">
+                ${statoHtml}
+                <button onclick="event.stopPropagation(); apriDettaglioProblema('${p.id}')" class="lg:hidden mt-3 w-full px-2 py-1.5 bg-blue-50 border border-blue-400 text-blue-800 rounded font-bold shadow-sm text-[10px]">Vedi Dettaglio</button>
+            </td>
+        </tr>`;
     }).join('');
 
+    // ... (resta il calcolo del grafico sottostante)
     const conteggi = {};
     filtered.forEach(p => {
         const codObj = codiciProblematica.find(c => String(c.id).trim().toLowerCase() === String(p.codice).trim().toLowerCase());
@@ -1143,13 +1160,9 @@ function renderAnalisiAssiemi() {
     chartAssiemi = new Chart(ctx, {
         type: 'doughnut',
         data: { labels: labels, datasets: [{ data: data, backgroundColor: bgColors, borderColor: '#000', borderWidth: 2 }] },
-        options: { 
-            responsive: true, maintainAspectRatio: false, resizeDelay: 100,
-            plugins: { legend: { position: 'bottom', labels: { font: { weight: 'bold', size: 10 }, color: '#0f172a' } } } 
-        }
+        options: { responsive: true, maintainAspectRatio: false, resizeDelay: 100, plugins: { legend: { position: 'bottom', labels: { font: { weight: 'bold', size: 10 }, color: '#0f172a' } } } }
     });
 }
-
 
 function getDescrizioneCodiceDalDB(codice) {
     if (!codice) return '';
@@ -1210,21 +1223,32 @@ function renderTabellaProblematiche() {
         const isRisolto = sol.some(x => String(x.esito).trim().toLowerCase() === 'positivo' || String(x.esito).trim().toLowerCase() === 'risolto');
         const statoHtml = isRisolto ? `<span class="px-2 py-1 bg-emerald-100 text-emerald-900 border-2 border-emerald-600 text-[10px] font-extrabold rounded">CHIUSO</span>` : `<span class="px-2 py-1 bg-rose-100 text-rose-900 border-2 border-rose-600 text-[10px] font-extrabold rounded">APERTO</span>`;
 
-		const codId = String(p.codice || 'N/D').trim();
+        const codId = String(p.codice || 'N/D').trim();
         const codDesc = getDescrizioneCodiceDalDB(codId);
         const strCodice = `<div class="flex flex-col"><span class="font-mono font-extrabold text-slate-900 text-xs">${codId}</span>${codDesc ? `<span class="text-[11px] font-semibold text-slate-600 leading-tight mt-1">${codDesc}</span>` : ''}</div>`;
 
         const anagraficaSub = sottoassiemi.find(sa => sa.PN_Sottoassieme === p.pn_assieme);
         const nomeSub = anagraficaSub ? anagraficaSub.NomeSottoassieme : 'N/D';
-		const strAssieme = `<b class="text-slate-900">PN:</b> <span class="font-mono font-bold text-slate-800">${p.pn_assieme || 'N/D'}</span><br><span class="text-[10px] font-bold text-slate-600 mt-1 block">${nomeSub}</span>`;
+        const strAssieme = `<b class="text-slate-900">PN:</b> <span class="font-mono font-bold text-slate-800">${p.pn_assieme || 'N/D'}</span><br><span class="text-[10px] font-bold text-slate-600 mt-1 block">${nomeSub}</span>`;
         const strDesc = `<div class="mb-2"><span class="text-[10px] uppercase font-bold text-slate-400">Descrizione</span><br><b class="text-slate-900 text-xs">${p.desc || 'N/D'}</b></div><div><span class="text-[10px] uppercase font-bold text-slate-400">Sintomi</span><br><span class="text-xs font-bold text-slate-700">${p.sintomi || 'N/D'}</span></div>`;
         const searchStr = `${p.desc} ${p.sintomi} ${p.codice} ${p.pn_assieme} ${nomeSub} ${m.destinazione} ${m.tecnico}`.toLowerCase().replace(/"/g, '&quot;');
         
-        return `<tr ondblclick="apriDettaglioProblema('${p.id}')" class="guasto-row hover:bg-blue-50 transition-colors cursor-pointer" data-search="${searchStr}"><td class="p-4 pl-6 align-top w-32 border-r border-slate-300"><span class="text-sm text-slate-900 font-extrabold">${p.data}</span></td><td class="p-4 text-xs align-top w-48 border-r border-slate-300"><b class="text-slate-900 text-sm">${m.destinazione}</b><br><span class="text-slate-700 font-bold">${m.tecnico.replace(/;/g, ', ')}</span></td><td class="p-4 text-xs align-top w-48 bg-slate-50 border-r border-slate-300">${strCodice}</td><td class="p-4 text-xs align-top w-48 border-r border-slate-300">${strAssieme}</td><td class="p-4 text-xs align-top border-r border-slate-300">${strDesc}</td><td class="p-4 pr-6 w-32 align-top text-center">${statoHtml}<br><span class="text-[10px] text-slate-600 font-extrabold mt-2 block">${sol.length} int.</span></td></tr>`;
+        return `<tr ondblclick="apriDettaglioProblema('${p.id}')" class="guasto-row hover:bg-blue-50 transition-colors cursor-pointer" data-search="${searchStr}">
+            <td class="p-4 pl-6 align-top min-w-[100px] border-r border-slate-300"><span class="text-sm text-slate-900 font-extrabold">${p.data}</span></td>
+            <td class="p-4 text-xs align-top min-w-[150px] border-r border-slate-300"><b class="text-slate-900 text-sm">${m.destinazione}</b><br><span class="text-slate-700 font-bold">${m.tecnico.replace(/;/g, ', ')}</span></td>
+            <td class="p-4 text-xs align-top min-w-[180px] bg-slate-50 border-r border-slate-300">${strCodice}</td>
+            <td class="p-4 text-xs align-top min-w-[180px] border-r border-slate-300">${strAssieme}</td>
+            <td class="p-4 text-xs align-top border-r border-slate-300">${strDesc}</td>
+            <td class="p-4 pr-6 min-w-[120px] align-top text-center">
+                ${statoHtml}<br><span class="text-[10px] text-slate-600 font-extrabold mt-2 block">${sol.length} int.</span>
+                <button onclick="event.stopPropagation(); apriDettaglioProblema('${p.id}')" class="lg:hidden mt-3 w-full px-2 py-1.5 bg-blue-50 border border-blue-400 text-blue-800 rounded font-bold shadow-sm text-[10px]">Vedi Dettaglio</button>
+            </td>
+        </tr>`;
     }).join('');
     
     renderTopOffenders();
 }
+
 
 function apriDettaglioProblema(id_prob) {
     const p = problematiche.find(x => String(x.id) === String(id_prob)); if(!p) return;
@@ -1676,7 +1700,18 @@ function renderTabella() {
         const ops = m.tecnico.split(';').map(s=>s.trim()).filter(Boolean);
         const badges = ops.map(op => `<div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-extrabold border-2 border-black shadow-sm" style="background-color: ${getColorForTecnico(op)}" title="${op}">${getInitials(op)}</div>`).join('');
         const searchStr = `${m.tecnico} ${m.destinazione} ${m.scopo} ${m.piattaforma || ''} ${m.prodottoNome || ''} ${m.prodottoId || ''} ${m.serialNumber || ''}`.toLowerCase().replace(/"/g, '&quot;');
-        return `<tr ondblclick="apriDettaglioMissione('${m.id}')" class="planner-row hover:bg-blue-50 group transition-colors cursor-pointer" data-search="${searchStr}"><td class="p-4 pl-6 border-r border-slate-300"><div class="flex items-center gap-1.5 mb-1">${badges}</div><div class="font-bold text-slate-900 text-xs">${m.tecnico.replace(/;/g, ', ')}</div></td><td class="p-4 border-r border-slate-300">${getStatoMissione(m.inizio, m.fine)}</td><td class="p-4 border-r border-slate-300"><b class="text-slate-900">${m.destinazione}</b> <span class="text-[11px] font-bold text-slate-600 bg-slate-200 px-1 rounded ml-1 border border-slate-300">${m.piattaforma || 'N/D'}</span><br><span class="text-xs font-medium text-slate-800">${m.scopo}</span></td><td class="p-4 border-r border-slate-300 text-xs font-extrabold text-slate-900">${new Date(m.inizio).toLocaleDateString('it-IT')}<br><span class="text-slate-600 font-bold">a ${new Date(m.fine).toLocaleDateString('it-IT')}</span></td><td class="p-4 pr-6 text-right opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap"><button onclick="apriModificaMissione('${m.id}')" class="px-4 py-2 bg-slate-100 border-2 border-black rounded-lg text-xs font-bold mr-2">Edit</button><button onclick="eliminaMissione('${m.id}')" class="px-4 py-2 bg-red-100 border-2 border-black rounded-lg text-xs font-bold text-red-900">Del</button></td></tr>`;
+        
+        return `<tr ondblclick="apriDettaglioMissione('${m.id}')" class="planner-row hover:bg-blue-50 group transition-colors cursor-pointer" data-search="${searchStr}">
+            <td class="p-4 pl-6 border-r border-slate-300"><div class="flex items-center gap-1.5 mb-1">${badges}</div><div class="font-bold text-slate-900 text-xs">${m.tecnico.replace(/;/g, ', ')}</div></td>
+            <td class="p-4 border-r border-slate-300">${getStatoMissione(m.inizio, m.fine)}</td>
+            <td class="p-4 border-r border-slate-300"><b class="text-slate-900">${m.destinazione}</b> <span class="text-[11px] font-bold text-slate-600 bg-slate-200 px-1 rounded ml-1 border border-slate-300">${m.piattaforma || 'N/D'}</span><br><span class="text-xs font-medium text-slate-800">${m.scopo}</span></td>
+            <td class="p-4 border-r border-slate-300 text-xs font-extrabold text-slate-900">${new Date(m.inizio).toLocaleDateString('it-IT')}<br><span class="text-slate-600 font-bold">a ${new Date(m.fine).toLocaleDateString('it-IT')}</span></td>
+            <td class="p-4 pr-6 text-right opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                <button onclick="event.stopPropagation(); apriDettaglioMissione('${m.id}')" class="lg:hidden px-3 py-2 bg-blue-100 border-2 border-blue-800 rounded-lg text-xs font-bold text-blue-900 mr-2 shadow-sm">Apri</button>
+                <button onclick="event.stopPropagation(); apriModificaMissione('${m.id}')" class="px-3 py-2 bg-slate-100 border-2 border-black rounded-lg text-xs font-bold mr-2">Edit</button>
+                <button onclick="event.stopPropagation(); eliminaMissione('${m.id}')" class="px-3 py-2 bg-red-100 border-2 border-black rounded-lg text-xs font-bold text-red-900">Del</button>
+            </td>
+        </tr>`;
     }).join('');
 }
 
@@ -2591,11 +2626,9 @@ function renderTabellaPiattaforme() {
 				if (String(sub.stato).toLowerCase() === 'degradato') bg = 'bg-amber-100 text-amber-900 border-amber-500';
                 if (String(sub.stato).toLowerCase() === 'critico') bg = 'bg-rose-100 text-rose-900 border-rose-500';
 				
-				
                 const anagraficaSub = sottoassiemi.find(sa => sa.PN_Sottoassieme === sub.pn_sub);
                 const nomeSub = anagraficaSub ? anagraficaSub.NomeSottoassieme : sub.pn_sub;
 
-                // LOGICA PURA: Conta quante volte ricorre l'esatta coppia PN e SN nella tabella Problemi
                 const guastiSub = problematiche.filter(p => {
                     return String(p.pn_assieme).trim().toLowerCase() === String(sub.pn_sub).trim().toLowerCase() && 
                            String(p.sn_assieme).trim().toLowerCase() === String(sub.sn_sub).trim().toLowerCase();
@@ -2616,8 +2649,8 @@ function renderTabellaPiattaforme() {
                 const badgeMTBF = `<span class="text-[9px] font-extrabold text-blue-600 bg-white border border-blue-300 px-1.5 py-0.5 rounded shadow-sm inline-block mt-1">MTBF: ${stats.mtbf} gg</span>`;
 
                 return `
-                <div ${dblClickEvent} class="grid grid-cols-9 border-t border-slate-100 first:border-0 items-center min-h-[44px] ${hoverClass}">
-                    <div class="col-span-4 p-2 pl-4 pr-4 flex justify-between items-center border-r border-slate-200">
+                <div ${dblClickEvent} class="flex flex-col lg:grid lg:grid-cols-9 border-t border-slate-100 first:border-0 lg:items-center min-h-[44px] ${hoverClass} p-3 lg:p-0 gap-3 lg:gap-0">
+                    <div class="w-full lg:col-span-4 lg:p-2 lg:pl-4 lg:pr-4 flex justify-between items-center lg:border-r border-slate-200">
                         <div class="flex flex-col items-start">
                             <span class="text-xs font-bold text-slate-800 pointer-events-none">🔌 ${nomeSub} (PN: ${sub.pn_sub})</span>
                             <div><span class="text-[9px] font-mono text-slate-500 font-extrabold mt-0.5 block pointer-events-none">SN: ${sub.sn_sub}</span></div>
@@ -2625,10 +2658,21 @@ function renderTabellaPiattaforme() {
                         </div>
                         <span class="text-[10px] font-extrabold px-1.5 py-0.5 rounded border ${bg} uppercase pointer-events-none">${sub.stato}</span>
                     </div>
-                    <div class="col-span-2 p-2 px-4 border-r border-slate-200 flex justify-center items-center h-full">
+                    
+                    <!-- AZIONI MOBILE -->
+                    <div class="flex lg:hidden w-full justify-between items-center border-t border-slate-200 pt-3">
+                        <div>${testoGuasti}</div>
+                        <div class="flex gap-2">
+                            ${hasGuasti ? `<button onclick="event.stopPropagation(); apriStoricoGuastiAssieme('${sub.pn_sub}', '${sub.sn_sub}')" class="text-[10px] bg-rose-100 text-rose-900 border border-rose-300 px-3 py-1.5 rounded font-bold shadow-sm">Vedi Storico</button>` : ''}
+                            ${linkSwap}
+                        </div>
+                    </div>
+
+                    <!-- AZIONI DESKTOP -->
+                    <div class="hidden lg:flex lg:col-span-2 p-2 px-4 border-r border-slate-200 justify-center items-center h-full">
                         ${testoGuasti}
                     </div>
-                    <div class="col-span-3 p-2 px-4 pr-4 flex justify-center items-center h-full">
+                    <div class="hidden lg:flex lg:col-span-3 p-2 px-4 pr-4 justify-center items-center h-full">
                         <div class="flex w-full justify-center">
                             ${linkSwap}
                         </div>
@@ -2637,17 +2681,41 @@ function renderTabellaPiattaforme() {
             }).join('');
 
         const prodNome = prodotti.find(p => p.PN === sistema.prodottoId)?.NomeProdotto || '';
+        const statsSist = calcolaMTBFSistema(sistema.prodottoId);
+        const badgeMTBFSist = `<span class="text-[9px] font-extrabold text-blue-600 bg-blue-50 border border-blue-300 px-1.5 py-0.5 rounded shadow-sm inline-block mt-1.5" title="Guasti totali per prodotto: ${statsSist.guasti}">MTBF Globale: ${statsSist.mtbf} gg</span>`;
+        
         return `
-        <div class="mb-4 bg-white border-2 border-black rounded-xl overflow-hidden shadow-sm">
-            <h3 class="text-sm font-extrabold text-slate-900 bg-slate-100 border-b-2 border-black px-4 py-2 flex items-center justify-between">
-                <span>📦 ${prodNome} <span class="text-slate-500 font-mono font-normal ml-2">PN: ${sistema.prodottoId} | SN: ${sistema.serialNumber}</span></span>
-                ${calcolaStatoGlobale(sistema.prodottoId, sistema.serialNumber).stato !== 'Operativo' ? '⚠️' : '✅'}
-            </h3>
-            <div class="divide-y-2 divide-slate-200">${subRowsHTML}</div>
+        <div class="salute-row flex flex-col lg:grid lg:grid-cols-12 hover:bg-slate-50 transition-colors items-stretch border-t border-slate-200">
+            <div class="lg:col-span-3 p-4 border-b lg:border-b-0 lg:border-r border-slate-300 flex flex-col pt-4 bg-slate-50 lg:bg-transparent">
+                <b class="text-slate-900 block text-sm">📦 ${prodNome} <span class="text-[11px] font-mono font-extrabold bg-white border border-slate-400 text-slate-800 px-1.5 py-0.5 rounded ml-2 inline-block">PN: ${sistema.prodottoId}</span></b>
+                <div><span class="text-[11px] font-mono font-extrabold bg-white border border-slate-400 text-slate-800 px-1.5 py-0.5 rounded mt-1.5 inline-block">SN: ${sistema.serialNumber}</span></div>
+                <div>${badgeMTBFSist}</div>
+            </div>
+            <div class="lg:col-span-9 flex flex-col justify-center">${subRowsHTML}</div>
         </div>`;
     }).join('');
 
-    container.innerHTML = rowsHTML || '<p class="text-slate-500 font-bold text-center mt-6">Nessun componente in avaria trovato sulla piattaforma.</p>';
+    container.innerHTML = `
+    <div class="mb-4 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+        <h3 class="text-base font-extrabold text-white bg-slate-800 px-4 py-2 flex items-center justify-between">
+            <span>Piattaforma Base: <span class="text-blue-300 font-mono">${piattaforma}</span></span>
+        </h3>
+        <div class="overflow-x-auto p-0 lg:p-4">
+            <div class="lg:border-2 lg:border-black lg:rounded-lg overflow-hidden flex flex-col bg-white lg:shadow-sm">
+                
+                <div class="hidden lg:grid grid-cols-12 bg-slate-100 text-[11px] uppercase font-extrabold text-slate-700 border-b-2 border-black">
+                    <div class="col-span-3 p-3 pl-4 border-r border-slate-300">Prodotto / SN Base</div>
+                    <div class="col-span-4 p-3 border-r border-slate-300">Sottoassiemi & Stato</div>
+                    <div class="col-span-2 p-3 border-r border-slate-300 text-center">Guasti Correlati</div>
+                    <div class="col-span-3 p-3 text-center pr-4">Azioni</div>
+                </div>
+                
+                <div class="divide-y-4 lg:divide-y-2 divide-slate-200">
+                    ${rowsHTML}
+                </div>
+            </div>
+        </div>
+    </div>`;
 }
 
 function espandiAlbero(espandi) {
