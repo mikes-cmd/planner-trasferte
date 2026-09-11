@@ -9,8 +9,8 @@
   <link rel="stylesheet" href="libs/vis-timeline-graph2d.min.css" />
   <script src="libs/vis-timeline-graph2d.min.js"></script>
   <script src="libs/sql-asm.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="libs/xlsx.full.min.js"></script>
+  <script src="libs/chart.js"></script>
   <script src="libs/world.geojson.js"></script>
 
   <style>
@@ -70,8 +70,8 @@
 
 	#earth-container {
       position: relative;
-      width: 400px;
-      height: 400px;
+      width: 600px;
+      height: 600px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -140,7 +140,7 @@
       -webkit-background-clip: text;
       background-clip: text;
       animation: shine 3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-      animation-delay: 0.35s; /* Parte in leggero ritardo rispetto al titolo */
+      animation-delay: 0.35s;
     }
 
     @keyframes shine {
@@ -158,11 +158,9 @@
 
     <!-- GLOBO TERRESTRE -->
     <div id="earth-container">
-      <canvas id="earth-canvas" width="500" height="500"></canvas>
+      <canvas id="earth-canvas" width="600" height="600"></canvas>
     </div>
 
-    <!-- LOGO ISTITUZIONALE LEONARDO -->
-<!-- LOGO ISTITUZIONALE LEONARDO (VETTORIALE PURO) -->
     <!-- LOGO ISTITUZIONALE LEONARDO -->
     <div id="brand-reveal">
       <svg class="w-56 h-56 mb-8 filter drop-shadow-[0_0_35px_rgba(227,6,19,0.6)]" viewBox="0 0 1000 1000" fill="none">
@@ -217,7 +215,8 @@
             <button onclick="collegaDatabaseSync()" class="flex-1 bg-blue-600 border-2 border-black text-white font-bold px-3 py-3 rounded-xl hover:bg-blue-700 flex items-center justify-center text-sm shadow-md">Connetti .SQLite</button>
             <button onclick="importaDaExcelPicker()" class="flex-1 bg-emerald-600 border-2 border-black text-white font-bold px-3 py-3 rounded-xl hover:bg-emerald-700 flex items-center justify-center text-sm shadow-md">Importa .XLSX</button>
             <button id="btn-salva-sqlite" onclick="salvaNuovoSQLite()" class="hidden flex-1 bg-purple-600 border-2 border-black text-white font-bold px-3 py-3 rounded-xl hover:bg-purple-700 flex items-center justify-center text-sm shadow-md">Salva .SQLite</button>
-            <button id="btn-rilascia-lock" onclick="rilasciaLockManuale()" class="hidden flex-1 bg-rose-600 border-2 border-black text-white font-bold px-3 py-3 rounded-xl hover:bg-rose-700 flex items-center justify-center text-sm shadow-md">Chiudi Lock</button>
+			<button id="btn-esporta-excel" onclick="esportaInExcel()" class="hidden flex-1 bg-yellow-600 border-2 border-black text-white font-bold px-3 py-3 rounded-xl hover:bg-yellow-700 flex items-center justify-center text-sm shadow-md">Esporta .XLSX</button>
+			<button id="btn-rilascia-lock" onclick="rilasciaLockManuale()" class="hidden flex-1 bg-rose-600 border-2 border-black text-white font-bold px-3 py-3 rounded-xl hover:bg-rose-700 flex items-center justify-center text-sm shadow-md">Chiudi Lock</button>
         </div>
         
         <div class="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-full border border-black">
@@ -243,6 +242,7 @@
           <button onclick="switchTab('mappa')" id="tab-btn-mappa" class="tab-btn px-4 py-1.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 border-2 border-transparent">Missioni Attive</button>
           <button onclick="switchTab('tabella')" id="tab-btn-tabella" class="tab-btn px-4 py-1.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 border-2 border-transparent">Registro / Modifica</button>
           <button onclick="switchTab('team')" id="tab-btn-team" class="tab-btn px-4 py-1.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 border-2 border-transparent">Team</button>
+          <button onclick="switchTab('anagrafica-luoghi')" id="tab-btn-anagrafica-luoghi" class="tab-btn px-4 py-1.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 border-2 border-transparent">Anagrafica Luoghi</button>
           <button onclick="switchTab('luoghi')" id="tab-btn-luoghi" class="tab-btn px-4 py-1.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 border-2 border-transparent">Mappa Trasferte</button>
         </nav>
       </div>
@@ -253,10 +253,41 @@
           <h2 class="text-xl font-extrabold text-slate-900 mb-5">Nuova Missione</h2>
           <form id="form-missione" onsubmit="salvaMissione(event)" class="space-y-5">
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-              <div class="relative" id="dropdown-container"><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Operatori *</label><div id="custom-select-trigger" onclick="toggleDropdown(event)" class="input-modern flex justify-between items-center cursor-pointer"><div id="custom-select-value" class="text-slate-800 font-medium">Seleziona...</div><svg class="w-4 h-4 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></div><div id="custom-select-options" class="custom-select-dropdown hidden"></div><input type="hidden" id="input-tecnico"></div>
-              <div class="relative"><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Destinazione *</label><input type="text" id="input-destinazione" autocomplete="off" class="input-modern" required /><div id="autocomplete-list" class="autocomplete-items hidden"></div></div>
-              <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Inizio *</label><input type="date" id="input-inizio" class="input-modern" required /></div>
-              <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Fine *</label><input type="date" id="input-fine" class="input-modern" required /></div>
+              <!-- 1. DATA INIZIO -->
+              <div>
+                  <label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Inizio *</label>
+                  <input type="date" id="input-inizio" class="input-modern" required onchange="popolaSelectTecnici()" />
+              </div>
+              
+              <!-- 2. DATA FINE -->
+              <div>
+                  <label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Fine *</label>
+                  <input type="date" id="input-fine" class="input-modern" required onchange="popolaSelectTecnici()" />
+              </div>
+
+              <!-- 3. DESTINAZIONE -->
+              <div class="relative">
+                  <label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Destinazione *</label>
+                  <input type="text" id="input-destinazione" autocomplete="off" class="input-modern" required />
+                  <div id="autocomplete-list" class="autocomplete-items hidden"></div>
+              </div>
+
+              <!-- 4. OPERATORI (CON CHECKBOX "SOLO LIBERI") -->
+              <div class="relative" id="dropdown-container">
+                  <div class="flex justify-between items-center mb-2">
+                      <label class="block text-xs font-extrabold text-slate-700 uppercase">Operatori *</label>
+                      <label class="flex items-center gap-1.5 cursor-pointer">
+                          <input type="checkbox" id="check-solo-disponibili" onchange="popolaSelectTecnici()" class="w-3.5 h-3.5 accent-blue-600 border border-black rounded">
+                          <span class="text-[9px] font-bold text-slate-600 uppercase">Solo Liberi</span>
+                      </label>
+                  </div>
+                  <div id="custom-select-trigger" onclick="toggleDropdown(event)" class="input-modern flex justify-between items-center cursor-pointer bg-white">
+                      <div id="custom-select-value" class="text-slate-800 font-medium truncate">Seleziona...</div>
+                      <svg class="w-4 h-4 text-black flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                  </div>
+                  <div id="custom-select-options" class="custom-select-dropdown hidden"></div>
+                  <input type="hidden" id="input-tecnico">
+              </div>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-4 gap-5">
               <div class="relative"><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Scopo</label><input type="text" id="input-scopo" class="input-modern" autocomplete="off" /></div>
@@ -291,13 +322,11 @@
             </div>
 			<!-- BARRA FILTRI TIMELINE -->
             <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4 bg-slate-50 p-3 rounded-xl border-2 border-black">
-                <!-- Filtro Nome con autocomplete / testo libero -->
                 <div class="relative">
                     <label class="block text-[10px] font-extrabold text-slate-700 uppercase mb-1">Cerca Operatore</label>
                     <input type="text" id="timeline-filter-nome" oninput="aggiornaTimeline()" placeholder="Digita per filtrare..." class="input-modern py-1.5 text-xs w-full">
                 </div>
 
-                <!-- Filtro Funzione -->
                 <div>
                     <label class="block text-[10px] font-extrabold text-slate-700 uppercase mb-1">Funzione / Reparto</label>
                     <select id="timeline-filter-funzione" onchange="aggiornaTimeline()" class="input-modern py-1.5 text-xs w-full">
@@ -305,7 +334,6 @@
                     </select>
                 </div>
 
-                <!-- Filtro Competenza -->
                 <div>
                     <label class="block text-[10px] font-extrabold text-slate-700 uppercase mb-1">Competenza</label>
                     <select id="timeline-filter-competenza" onchange="aggiornaTimeline()" class="input-modern py-1.5 text-xs w-full">
@@ -313,7 +341,6 @@
                     </select>
                 </div>
 
-                <!-- Reset Filtri -->
                 <div class="flex items-end">
                     <button onclick="resetFiltriTimeline()" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold py-2 px-3 rounded-lg border-2 border-black text-xs transition-colors shadow-sm">
                         Ripristina Tutti
@@ -327,11 +354,20 @@
       <section id="tab-mappa" class="tab-content hidden h-full">
         <div class="bg-white p-5 rounded-2xl shadow-md border-2 border-black h-full flex flex-col min-h-0">
           <div class="mb-5 flex justify-between">
-              <div class="flex gap-4"><input type="date" id="map-date-picker" class="input-modern w-48" onchange="aggiornaMappa()"><button onclick="impostaMappaOggi()" class="px-5 py-2 bg-slate-100 font-extrabold text-slate-900 rounded-lg border-2 border-black shadow-[0_2px_0_0_#000]">Data Odierna</button></div>
+              <div class="flex gap-4">
+                  <input type="date" id="map-date-picker" class="input-modern w-48" onchange="aggiornaMappa()">
+                  <button onclick="impostaMappaOggi()" class="px-5 py-2 bg-slate-100 font-extrabold text-slate-900 rounded-lg border-2 border-black shadow-[0_2px_0_0_#000]">Data Odierna</button>
+              </div>
           </div>
           <div class="flex gap-5 flex-grow min-h-0">
               <div id="map" class="flex-grow shadow-inner rounded-xl z-10"></div>
-              <div class="w-64 bg-slate-50 border-2 border-black rounded-xl p-5 flex flex-col flex-shrink-0 z-20"><h3 class="text-sm font-extrabold text-slate-900 mb-3 border-b-2 border-slate-300 pb-2">Legenda</h3><ul id="map-legend-list" class="space-y-3 overflow-y-auto pr-2 pb-2"></ul></div>
+              
+              <!-- RIQUADRO LEGENDA RIPRISTINATO -->
+              <div class="w-80 md:w-96 bg-slate-50 border-2 border-black rounded-xl p-5 flex flex-col flex-shrink-0 z-20">
+                  <h3 class="text-sm font-extrabold text-slate-900 mb-3 border-b-2 border-slate-300 pb-2">Legenda</h3>
+                  <ul id="map-legend-list" class="space-y-3 overflow-y-auto pr-2 pb-2"></ul>
+              </div>
+              
           </div>
         </div>
       </section>
@@ -386,6 +422,35 @@
         </div>
       </section>
 
+      <!-- SEZIONE ANAGRAFICA LUOGHI -->
+      <section id="tab-anagrafica-luoghi" class="tab-content hidden h-full overflow-y-auto">
+        <div class="bg-white p-8 rounded-2xl border-2 border-black max-w-5xl mx-auto mt-4 shadow-md">
+            <h2 class="text-2xl font-extrabold text-slate-900 mb-2">Anagrafica Luoghi e Coordinate</h2>
+            <p class="text-xs font-bold text-slate-500 mb-6">Elenco dei siti operativi e porti per il posizionamento su mappa globale e geolocalizzazione trasferte.</p>
+            
+            <div class="flex flex-col md:flex-row gap-3 mb-8">
+                <input type="text" id="nuovo-luogo-id" placeholder="Nome Luogo / Porto / Base" class="input-modern md:w-1/2">
+                <input type="number" step="any" id="nuovo-luogo-lat" placeholder="Latitudine (es. 44.10)" class="input-modern md:w-1/4">
+                <input type="number" step="any" id="nuovo-luogo-lon" placeholder="Longitudine (es. 9.82)" class="input-modern md:w-1/4">
+                <button onclick="aggiungiLuogo()" class="bg-blue-600 text-white font-bold px-6 py-2.5 rounded-lg border-2 border-black shadow-[0_4px_0_0_#000] hover:bg-blue-700">Aggiungi</button>
+            </div>
+            
+            <div class="overflow-x-auto border-2 border-black rounded-xl">
+                <table class="w-full text-left text-sm border-collapse">
+                    <thead class="bg-slate-100 text-[11px] uppercase font-extrabold text-slate-700 border-b-2 border-black">
+                        <tr>
+                            <th class="p-3 border-r border-slate-300">Identificativo Luogo</th>
+                            <th class="p-3 border-r border-slate-300">Latitudine</th>
+                            <th class="p-3 border-r border-slate-300">Longitudine</th>
+                            <th class="p-3 text-center">Azioni</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lista-luoghi-corpo" class="divide-y-2 divide-slate-200 bg-white"></tbody>
+                </table>
+            </div>
+        </div>
+      </section>
+
       <!-- SEZIONE MAPPA TRASFERTE E STATISTICHE GLOBALI -->
       <section id="tab-luoghi" class="tab-content hidden h-full overflow-hidden">
         <div class="flex flex-col h-full">
@@ -425,8 +490,8 @@
           <h1 class="text-xl font-extrabold text-slate-900">Gestione Ritorni dal Campo</h1>
         </div>
         <nav class="flex space-x-2 pb-2">
-          <button onclick="switchTabRitorni('dash')" id="tab-btn-rit-dash" class="tab-btn-rit px-4 py-1.5 rounded-lg text-sm font-bold border-2 border-transparent transition-colors">Dashboard Trasferte</button>
-          <button onclick="switchTabRitorni('assiemi')" id="tab-btn-rit-assiemi" class="tab-btn-rit px-4 py-1.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 border-2 border-transparent transition-colors">Analisi Sottoassiemi</button>
+          <button onclick="switchTabRitorni('dash')" id="tab-btn-rit-dash" class="tab-btn-rit px-4 py-1.5 rounded-lg text-sm font-bold border-2 border-transparent transition-colors">Dashboard Guasti</button>
+		  <button onclick="switchTabRitorni('assiemi')" id="tab-btn-rit-assiemi" class="tab-btn-rit px-4 py-1.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 border-2 border-transparent transition-colors">Analisi Sottoassiemi</button>
         </nav>
       </div>
     </header>
@@ -434,14 +499,15 @@
       
       <!-- SOTTO-SCHEDA 1: DASHBOARD CLASSICA -->
       <section id="view-rit-dash" class="ritorni-content block">
-        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
-            <div class="lg:col-span-3 flex flex-col justify-end">
-                <h2 class="text-3xl font-extrabold text-slate-900 mb-1">Dashboard Guasti</h2>
-                <input type="text" id="search-guasti" onkeyup="filtraGuasti()" placeholder="Cerca guasto..." class="input-modern w-80 max-w-full">
-            </div>
-            <div class="bg-white rounded-xl shadow-sm border-2 border-black p-4">
-                <h3 class="text-sm font-extrabold text-slate-900 mb-2 border-b-2 border-slate-200 pb-1">Top 5 Guasti</h3>
-                <ul id="top-offenders-list" class="space-y-3 text-xs font-bold text-slate-700"></ul>
+        <div class="flex flex-col md:flex-row justify-between md:items-end mb-6 gap-4">
+            <div>
+                <h2 class="text-3xl font-extrabold text-slate-900 mb-3">Dashboard Guasti</h2>
+                <div class="flex items-center gap-3">
+                    <input type="text" id="search-guasti" onkeyup="filtraGuasti()" placeholder="Cerca guasto..." class="input-modern w-80 max-w-full">
+                    <button onclick="document.getElementById('modal-top-guasti').classList.remove('hidden')" class="bg-amber-100 hover:bg-amber-200 text-amber-900 font-extrabold border-2 border-black px-4 py-2.5 rounded-xl shadow-[0_3px_0_0_#000] flex items-center gap-2 transition-colors">
+                        🏆 Top 5 Guasti
+                    </button>
+                </div>
             </div>
         </div>
         <div class="bg-white rounded-2xl shadow-md border-2 border-black overflow-hidden">
@@ -461,14 +527,14 @@
         </div>
       </section>
 
-      <!-- SOTTO-SCHEDA 2: ANALISI ASSIEMI -->
+	<!-- SOTTO-SCHEDA 2: ANALISI ASSIEMI -->
       <section id="view-rit-assiemi" class="ritorni-content hidden">
         <div class="flex flex-col lg:flex-row justify-between lg:items-end border-b-2 border-black pb-4 mb-6 gap-4">
             <div>
                 <h2 class="text-2xl font-extrabold text-slate-900 mb-1">Analisi Guasti per Sottoassieme</h2>
                 <p class="text-sm font-bold text-slate-500">Seleziona prodotto e sottoassieme per visualizzare lo storico guasti e la distribuzione delle cause.</p>
             </div>
-            <div class="flex flex-wrap items-end gap-3 bg-slate-100 p-3 rounded-xl border border-slate-300">
+            <div class="flex flex-wrap items-end gap-3 bg-slate-100 p-3 rounded-xl border border-slate-300 w-full lg:w-auto">
                 <div>
                     <label class="block text-[10px] font-extrabold text-slate-700 uppercase mb-1">Prodotto (PN) *</label>
                     <select id="rit-assiemi-pn" class="input-modern py-1.5 text-sm w-48" onchange="aggiornaFiltroAssiemi()"><option value="">-- Seleziona --</option></select>
@@ -477,33 +543,40 @@
                     <label class="block text-[10px] font-extrabold text-slate-700 uppercase mb-1">Sottoassieme</label>
                     <select id="rit-assiemi-nome" class="input-modern py-1.5 text-sm w-48" onchange="renderAnalisiAssiemi()"><option value="">-- Tutti --</option></select>
                 </div>
+                <div>
+                    <label class="block text-[10px] font-extrabold text-slate-700 uppercase mb-1">Stato</label>
+                    <select id="rit-assiemi-stato" class="input-modern py-1.5 text-sm w-32" onchange="renderAnalisiAssiemi()">
+                        <option value="">Tutti</option><option value="aperto">Aperti</option><option value="chiuso">Chiusi</option>
+                    </select>
+                </div>
+                <div class="flex-grow min-w-[200px]">
+                    <label class="block text-[10px] font-extrabold text-slate-700 uppercase mb-1">Ricerca Rapida</label>
+                    <input type="text" id="rit-assiemi-search" onkeyup="renderAnalisiAssiemi()" placeholder="Cerca codice, sintomo, tecnico..." class="input-modern py-1.5 text-sm w-full">
+                </div>
+                
+                <!-- NUOVO BOTTONE GRAFICO AGGIUNTO QUI -->
+                <button onclick="apriModalGraficoAssiemi()" class="bg-blue-100 hover:bg-blue-200 text-blue-900 font-extrabold border-2 border-black px-4 py-1.5 rounded-lg shadow-[0_2px_0_0_#000] flex items-center gap-2 transition-colors h-[38px]">
+                    📊 Distribuzione Cause
+                </button>
             </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div class="lg:col-span-2 bg-white rounded-2xl shadow-md border-2 border-black overflow-hidden h-fit">
-                <table class="w-full text-left text-sm text-slate-800">
-                    <thead class="bg-slate-100 text-[11px] uppercase font-extrabold text-slate-700 border-b-2 border-black">
-                    <tr>
-                        <th class="p-4 border-r border-slate-300 w-32">Data</th>
-                        <th class="p-4 border-r border-slate-300 w-48">Missione</th>
-                        <th class="p-4 border-r border-slate-300 w-48">Codice Guasto</th>
-                        <th class="p-4 border-r border-slate-300">Descrizione & Sintomi</th>
-                        <th class="p-4 text-center w-24">Stato</th>
-                    </tr>
-                    </thead>
-                    <tbody id="tabella-assiemi" class="divide-y-2 divide-slate-200">
-                        <tr><td colspan="5" class="p-8 text-center text-slate-500 font-bold">Utilizza i filtri per visualizzare i guasti.</td></tr>
-                    </tbody>
-                </table>
-            </div>
-            
-            <div class="bg-white rounded-2xl shadow-md border-2 border-black p-5 flex flex-col h-fit">
-                <h3 class="text-lg font-extrabold text-slate-900 mb-4 border-b-2 border-slate-300 pb-2">Distribuzione Cause (Codici)</h3>
-                <div class="relative w-full h-[300px] flex items-center justify-center" id="chart-assiemi-container">
-                    <canvas id="chart-assiemi"></canvas>
-                </div>
-            </div>
+        <!-- TABELLA A TUTTA LARGHEZZA (Rimosso il layout a griglia e il canvas laterale) -->
+        <div class="bg-white rounded-2xl shadow-md border-2 border-black overflow-hidden h-fit w-full">
+            <table class="w-full text-left text-sm text-slate-800">
+                <thead class="bg-slate-100 text-[11px] uppercase font-extrabold text-slate-700 border-b-2 border-black">
+                <tr>
+                    <th class="p-4 border-r border-slate-300 w-32">Data</th>
+                    <th class="p-4 border-r border-slate-300 w-48">Missione</th>
+                    <th class="p-4 border-r border-slate-300 w-48">Codice Guasto</th>
+                    <th class="p-4 border-r border-slate-300">Descrizione & Sintomi</th>
+                    <th class="p-4 text-center w-24">Stato</th>
+                </tr>
+                </thead>
+                <tbody id="tabella-assiemi" class="divide-y-2 divide-slate-200">
+                    <tr><td colspan="5" class="p-8 text-center text-slate-500 font-bold">Utilizza i filtri per visualizzare i guasti.</td></tr>
+                </tbody>
+            </table>
         </div>
       </section>
 
@@ -518,8 +591,9 @@
           <button onclick="navigaA('home')" class="p-2 hover:bg-slate-200 rounded-lg transition-colors border-2 border-transparent hover:border-black"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg></button>
           <h1 class="text-xl font-extrabold text-slate-900">Gestione As-Maintained</h1>
         </div>
-        <nav class="flex space-x-2 pb-2">
-          <button onclick="switchTabAsMaintained('salute')" id="tab-btn-salute" class="tab-btn-asm px-4 py-1.5 rounded-lg text-sm font-bold border-2 border-transparent">Stato di Salute (Sottoinsiemi)</button>
+        <nav class="flex space-x-2 pb-2 overflow-x-auto scrollbar-hide">
+          <button onclick="switchTabAsMaintained('salute')" id="tab-btn-salute" class="tab-btn-asm px-4 py-1.5 rounded-lg text-sm font-bold border-2 border-transparent">Salute (Per Sottoinsiemi)</button>
+          <button onclick="switchTabAsMaintained('piattaforme')" id="tab-btn-piattaforme" class="tab-btn-asm px-4 py-1.5 rounded-lg text-sm font-bold border-2 border-transparent">Salute (Per Piattaforma)</button>
           <button onclick="switchTabAsMaintained('ecp')" id="tab-btn-ecp" class="tab-btn-asm px-4 py-1.5 rounded-lg text-sm font-bold border-2 border-transparent">Stato Implementazione ECP</button>
         </nav>
       </div>
@@ -532,31 +606,51 @@
         <div class="flex flex-col lg:flex-row justify-between lg:items-end border-b-2 border-black pb-4 mb-6 gap-4">
             <div>
                 <h2 class="text-2xl font-extrabold text-slate-900 mb-1">Stato Salute Sistemi</h2>
-                <p class="text-sm font-bold text-slate-500">Seleziona un Part Number per visualizzare lo stato della flotta (MTBF calcolato su giorni solari).</p>
+                <p class="text-sm font-bold text-slate-500">Seleziona un Prodotto per analizzare i suoi sottoassiemi dispiegati.</p>
             </div>
             <div class="flex flex-wrap items-end gap-3 bg-slate-100 p-3 rounded-xl border border-slate-300">
                 <div>
                     <label class="block text-[10px] font-extrabold text-slate-700 uppercase mb-1">Part Number (PN) *</label>
-                    <select id="asm-salute-pn" class="input-modern py-1.5 text-sm w-36" onchange="aggiornaFiltroSN('salute')"><option value="">-- Seleziona --</option></select>
+                    <select id="asm-salute-pn" class="input-modern py-1.5 text-sm w-48" onchange="aggiornaFiltroSN('salute')"></select>
                 </div>
                 <div>
                     <label class="block text-[10px] font-extrabold text-slate-700 uppercase mb-1">Serial Number</label>
-                    <select id="asm-salute-sn" class="input-modern py-1.5 text-sm w-32"><option value="">-- Tutti --</option></select>
+                    <select id="asm-salute-sn" class="input-modern py-1.5 text-sm w-48" onchange="renderTabellaSalute()"></select>
                 </div>
-                <div class="flex items-center h-full pb-2 px-2">
+                <div class="flex flex-col gap-2 pb-1.5 px-2">
                     <label class="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" id="asm-salute-nosub" class="w-4 h-4 accent-blue-600 border-black rounded">
-                        <span class="text-xs font-bold text-slate-800">Solo globale</span>
+                        <input type="checkbox" id="asm-salute-nosub" onchange="renderTabellaSalute()" class="w-4 h-4 accent-blue-600 border-black rounded">
+                        <span class="text-[11px] font-bold text-slate-800">Solo globale</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="asm-salute-sologuasti" onchange="renderTabellaSalute()" class="w-4 h-4 accent-rose-600 border-black rounded">
+                        <span class="text-[11px] font-bold text-slate-800">Solo Guasti</span>
                     </label>
                 </div>
-                <input type="text" id="search-salute" onkeyup="filtraSalute()" placeholder="Ricerca interna..." class="input-modern py-1.5 text-sm w-40">
-                <button onclick="renderTabellaSalute()" class="bg-blue-600 text-white font-bold px-4 py-1.5 rounded-lg border-2 border-black hover:bg-blue-700 text-sm shadow-[0_2px_0_0_#000]">Estrai</button>
+                <div class="flex-grow min-w-[200px]">
+                    <label class="block text-[10px] font-extrabold text-slate-700 uppercase mb-1">Ricerca Rapida</label>
+                    <input type="text" id="search-salute" onkeyup="filtraSalute()" placeholder="Ricerca seriale, stato, componente..." class="input-modern py-1.5 text-sm w-full">
+                </div>
             </div>
         </div>
-        
-        <div id="tabella-salute-container">
-            <p class="text-slate-500 font-bold text-center mt-6">Utilizza i filtri in alto per estrarre i dati.</p>
+        <div id="tabella-salute-container"><p class="text-slate-500 font-bold text-center mt-6">Utilizza i filtri in alto per estrarre i dati.</p></div>
+      </section>
+
+      <!-- NUOVA TAB PIATTAFORME -->
+      <section id="tab-piattaforme" class="tab-content-asm hidden bg-white rounded-2xl shadow-md border-2 border-black p-6">
+        <div class="flex flex-col lg:flex-row justify-between lg:items-end border-b-2 border-black pb-4 mb-6 gap-4">
+            <div>
+                <h2 class="text-2xl font-extrabold text-slate-900 mb-1">Stato Salute per Piattaforma</h2>
+                <p class="text-sm font-bold text-slate-500">Esplora l'affidabilità di navi e siti raggruppando tutti i sistemi installati a bordo.</p>
+            </div>
+            <div class="flex flex-wrap items-end gap-3 bg-slate-100 p-3 rounded-xl border border-slate-300">
+                <div><label class="block text-[10px] font-extrabold text-slate-700 uppercase mb-1">Piattaforma / Nave *</label><select id="asm-piattaforma-select" class="input-modern py-1.5 text-sm w-48" onchange="renderTabellaPiattaforme()"></select></div>
+                <div class="flex flex-col gap-2 pb-1.5 px-2">
+                    <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="asm-piat-sologuasti" onchange="renderTabellaPiattaforme()" class="w-4 h-4 accent-rose-600 border-black rounded"><span class="text-[11px] font-bold text-slate-800">Solo Guasti</span></label>
+                </div>
+            </div>
         </div>
+        <div id="tabella-piattaforme-container"><p class="text-slate-500 font-bold text-center mt-6">Seleziona una piattaforma per visualizzare i sistemi a bordo.</p></div>
       </section>
 
       <!-- TAB MATRICE ECP (FILTRABILE) -->
@@ -573,10 +667,10 @@
                 </div>
                 <div>
                     <label class="block text-[10px] font-extrabold text-slate-700 uppercase mb-1">Serial Number</label>
-                    <select id="asm-ecp-sn" class="input-modern py-1.5 text-sm w-32"><option value="">-- Tutti --</option></select>
+                    <select id="asm-ecp-sn" class="input-modern py-1.5 text-sm w-32" onchange="renderMatriceECP()"><option value="">-- Tutti --</option></select>
                 </div>
                 <input type="text" id="search-ecp" onkeyup="filtraECP()" placeholder="Ricerca interna..." class="input-modern py-1.5 text-sm w-40">
-                <button onclick="renderMatriceECP()" class="bg-blue-600 text-white font-bold px-4 py-1.5 rounded-lg border-2 border-black hover:bg-blue-700 text-sm shadow-[0_2px_0_0_#000]">Estrai Matrice</button>
+                <!-- Bottone Estrai rimosso! -->
             </div>
         </div>
         
@@ -584,6 +678,25 @@
             <p class="text-slate-500 font-bold text-center mt-6">Utilizza i filtri in alto per estrarre i dati.</p>
         </div>
       </section>
+	  
+	  <!-- TAB ALBERO (TREE-VIEW BOM) -->
+      <section id="tab-tree" class="tab-content-asm hidden bg-white rounded-2xl shadow-md border-2 border-black p-6">
+        <div class="flex justify-between items-end border-b-2 border-black pb-4 mb-6 gap-4">
+            <div>
+                <h2 class="text-2xl font-extrabold text-slate-900 mb-1">Albero As-Maintained (BOM)</h2>
+                <p class="text-sm font-bold text-slate-500">Esplora la distinta base gerarchica della flotta attualmente dispiegata.</p>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="espandiAlbero(true)" class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 border-2 border-black rounded-lg text-xs font-bold shadow-[0_2px_0_0_#000] transition-transform active:translate-y-1 active:shadow-none">Espandi Tutto</button>
+                <button onclick="espandiAlbero(false)" class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 border-2 border-black rounded-lg text-xs font-bold shadow-[0_2px_0_0_#000] transition-transform active:translate-y-1 active:shadow-none">Comprimi Tutto</button>
+            </div>
+        </div>
+        
+        <div id="tree-container" class="font-mono text-sm pl-2 max-w-5xl mx-auto pb-10">
+            <p class="text-slate-500 font-bold text-center mt-6">Caricamento albero in corso...</p>
+        </div>
+      </section>
+	  
     </main>
   </div>
 
@@ -642,9 +755,10 @@
               <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Data *</label><input type="date" id="segnala-prob-data" class="input-modern" required></div>
               <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Codice Guasto</label><select id="segnala-prob-codice" class="input-modern"></select></div>
           </div>
-          <div class="grid grid-cols-2 gap-5">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
               <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">PN Assieme</label><input type="text" id="segnala-prob-pn" class="input-modern"></div>
               <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Nome Assieme</label><input type="text" id="segnala-prob-nome-assieme" class="input-modern"></div>
+              <div><label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">SN Assieme</label><input type="text" id="segnala-prob-sn-assieme" class="input-modern" placeholder="Es. 12345"></div>
           </div>
           <div>
               <label class="flex items-center text-xs font-extrabold text-slate-700 uppercase mb-2">
@@ -660,7 +774,7 @@
     </div>
   </div>
 
-  <div id="modal-dettaglio-problema" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-sm overflow-y-auto h-full w-full z-[100] flex items-start justify-center p-4 py-10">
+  <div id="modal-dettaglio-problema" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-sm overflow-y-auto h-full w-full z-[110] flex items-start justify-center p-4 py-10">
     <div class="modal-enter p-8 border-4 border-black w-full max-w-4xl rounded-2xl bg-white relative">
       <button onclick="document.getElementById('modal-dettaglio-problema').classList.add('hidden')" class="absolute top-5 right-5 text-slate-800 bg-slate-100 border-2 border-black rounded-lg p-1"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
       <h3 class="text-2xl font-extrabold text-slate-900 mb-2 border-b-2 border-slate-200 pb-3">Dettaglio Problema e Interventi</h3>
@@ -682,6 +796,48 @@
     </div>
   </div>
 
+  <div id="modal-sostituzione-lru" class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-md overflow-y-auto h-full w-full z-[120] flex items-start justify-center p-4 py-10">
+    <div class="modal-enter p-8 border-4 border-black w-full max-w-xl rounded-2xl bg-white relative">
+      <button onclick="document.getElementById('modal-sostituzione-lru').classList.add('hidden')" class="absolute top-5 right-5 text-slate-800 bg-slate-100 border-2 border-black rounded-lg p-1"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+      
+      <h3 class="text-2xl font-extrabold text-slate-900 mb-1">Sostituzione LRU</h3>
+      <p class="text-sm font-bold text-slate-500 mb-6 pb-3 border-b-2 border-slate-200">Registra lo sbarco del componente guasto e l'installazione del nuovo ricambio.</p>
+      
+      <form onsubmit="salvaSostituzioneLRU(event)" class="space-y-5">
+          <input type="hidden" id="lru-pn-padre">
+          <input type="hidden" id="lru-sn-padre">
+          <input type="hidden" id="lru-pn-sub">
+          
+          <div class="bg-slate-50 p-4 rounded-xl border border-slate-300 mb-2">
+              <span class="text-[10px] font-extrabold text-slate-500 uppercase">Componente da Sbarcare</span>
+              <div class="flex gap-4 mt-2">
+                  <div class="w-1/2"><label class="block text-xs font-bold text-slate-700 mb-1">Vecchio SN</label><input type="text" id="lru-old-sn" class="input-modern bg-slate-200" readonly></div>
+                  <div class="w-1/2"><label class="block text-xs font-bold text-slate-700 mb-1">Nuovo Stato</label>
+                      <select id="lru-stato-old" class="input-modern border-rose-500 text-rose-900 bg-rose-50">
+                          <option value="In Riparazione">In Riparazione</option>
+                          <option value="Rottamato">Rottamato</option>
+                          <option value="Sbarcato">Sbarcato (Funzionante)</option>
+                      </select>
+                  </div>
+              </div>
+          </div>
+
+          <div class="bg-blue-50 p-4 rounded-xl border border-blue-300">
+              <span class="text-[10px] font-extrabold text-blue-600 uppercase">Nuovo Componente da Installare</span>
+              <div class="flex gap-4 mt-2">
+                  <div class="w-1/2"><label class="block text-xs font-bold text-slate-700 mb-1">Nuovo SN *</label><input type="text" id="lru-new-sn" class="input-modern border-blue-500" required placeholder="Es. SN-998877"></div>
+                  <div class="w-1/2"><label class="block text-xs font-bold text-slate-700 mb-1">Data Installazione *</label><input type="date" id="lru-data" class="input-modern border-blue-500" required></div>
+              </div>
+          </div>
+          
+          <div class="flex justify-end pt-4 border-t-2 border-slate-200 mt-6">
+              <button type="submit" class="w-full bg-blue-600 text-white font-extrabold py-3 rounded-xl border-2 border-black shadow-[0_4px_0_0_#000] hover:bg-blue-700 transition-colors">Esegui Swapping</button>
+          </div>
+      </form>
+    </div>
+  </div>
+  
+  
   <script>
     (function() {
       if (typeof require !== 'undefined') {
@@ -700,5 +856,24 @@
       document.write('<script src="logic.js"><\/script>');
     })();
   </script>
+  <!-- MODALE TOP 5 GUASTI -->
+  <div id="modal-top-guasti" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-sm overflow-y-auto h-full w-full z-[120] flex items-start justify-center p-4 py-10">
+    <div class="modal-enter p-8 border-4 border-black w-full max-w-md rounded-2xl bg-white relative">
+      <button onclick="document.getElementById('modal-top-guasti').classList.add('hidden')" class="absolute top-5 right-5 text-slate-800 bg-slate-100 border-2 border-black rounded-lg p-1"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+      <h3 class="text-2xl font-extrabold text-slate-900 mb-4 border-b-2 border-slate-200 pb-2">Top 5 Guasti Frequenti</h3>
+      <ul id="top-offenders-list" class="space-y-3 text-sm font-bold text-slate-700"></ul>
+    </div>
+  </div>
+
+  <!-- MODALE GRAFICO CAUSE SOTTOASSIEMI -->
+  <div id="modal-grafico-assiemi" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-sm overflow-y-auto h-full w-full z-[120] flex items-start justify-center p-4 py-10">
+    <div class="modal-enter p-8 border-4 border-black w-full max-w-2xl rounded-2xl bg-white relative">
+      <button onclick="document.getElementById('modal-grafico-assiemi').classList.add('hidden')" class="absolute top-5 right-5 text-slate-800 bg-slate-100 border-2 border-black rounded-lg p-1"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+      <h3 class="text-2xl font-extrabold text-slate-900 mb-4 border-b-2 border-slate-200 pb-2">Distribuzione Cause (Codici)</h3>
+      <div class="relative w-full h-[400px] flex items-center justify-center" id="chart-assiemi-container">
+          <canvas id="chart-assiemi"></canvas>
+      </div>
+    </div>
+  </div>
 </body>
 </html>
