@@ -147,6 +147,77 @@
       0% { background-position: 200% center; }
       100% { background-position: -50% center; }
     }
+	/* ========================================= */
+    /* 🍏 APPLE CUPERTINO MOBILE EXPERIENCE 🍏   */
+    /* ========================================= */
+    
+    /* Effetto Vetro Smerigliato Nativo (Glassmorphism) */
+    .glass-tab-bar {
+        background: rgba(255, 255, 255, 0.85);
+        backdrop-filter: blur(25px);
+        -webkit-backdrop-filter: blur(25px);
+        border-top: 1px solid rgba(0,0,0,0.1);
+    }
+
+    @media (max-width: 1024px) {
+        /* 1. SCALATURA FONT INTELLIGENTE: I dati restano densi, ma leggibili senza sforzo */
+        .text-\[9px\] { font-size: 11px !important; }
+        .text-\[10px\] { font-size: 13px !important; }
+        .text-\[11px\] { font-size: 14px !important; }
+        .text-xs { font-size: 15px !important; line-height: 1.4 !important; }
+        .text-sm { font-size: 16px !important; line-height: 1.5 !important; }
+        .text-base { font-size: 18px !important; }
+
+        /* 2. ANTI-ZOOM iOS E AREE DI TOCCO (Finger-Friendly) */
+        .input-modern { font-size: 16px !important; padding: 14px 16px !important; border-radius: 14px !important; }
+        button:not(.absolute) { min-height: 44px !important; } /* Apple HIG: min 44px touch target */
+        
+        /* 3. PREPARAZIONE SPAZIO PER LA TAB BAR INFERIORE */
+        main { padding-bottom: 110px !important; }
+
+        /* 4. MODALI "BOTTOM SHEET" (Slide dal basso in stile Mappe/Apple Pay) */
+        .modal-overlay-mobile { align-items: flex-end !important; padding: 0 !important; }
+        .modal-overlay-mobile > div {
+            width: 100% !important;
+            max-width: 100% !important;
+            border-radius: 28px 28px 0 0 !important;
+            border-width: 0 !important;
+            margin-top: 12vh !important;
+            min-height: 88vh !important;
+            padding: 30px 20px 80px 20px !important;
+            animation: slideUpiOS 0.4s cubic-bezier(0.32, 0.72, 0, 1) forwards !important;
+            box-shadow: 0 -15px 40px rgba(0,0,0,0.15) !important;
+        }
+        /* La "Maniglia" tattile per tirare giù il modale */
+        .modal-overlay-mobile > div::before {
+            content: ''; display: block; width: 45px; height: 5px; background: #cbd5e1; border-radius: 10px; margin: -15px auto 25px auto;
+        }
+		
+		/* TIMELINE MOBILE */
+        .vis-item { padding: 6px 8px !important; font-size: 13px !important; border-radius: 8px !important;}
+        .vis-label { font-size: 14px !important; font-weight: 800 !important; padding-top: 8px !important;}
+        .vis-time-axis .vis-text { font-size: 13px !important; }
+		
+		/* SPLASH SCREEN MOBILE */
+        #earth-container { transform: scale(1.4); margin-bottom: 20px;} /* Ingrandisce il canvas del 40% su mobile */
+        #brand-reveal svg { width: 180px; height: 180px; margin-bottom: 10px; } /* Rende il logo leggermente più piccolo per far respirare il testo */
+        .shimmer-text { font-size: 2.5rem !important; }
+		
+    }
+
+    @keyframes slideUpiOS {
+        from { transform: translateY(100%); }
+        to { transform: translateY(0%); }
+    }
+	
+	@media (max-width: 1024px) {
+        /* ... altre regole mobile esistenti ... */
+        
+        /* HOME BOTTONI */
+        #screen-home .grid > div { padding: 30px !important; min-height: 180px; display: flex; flex-direction: column; justify-content: center;}
+        #screen-home .flex-col > button { min-height: 54px !important; font-size: 16px !important; margin-bottom: 8px;}
+    }
+	
 	</style>
 </head>
 <body>
@@ -236,18 +307,104 @@
             <h1 class="text-xl font-extrabold text-slate-900 leading-none">Gestione Trasferte</h1>
           </div>
         </div>
-        <nav class="flex space-x-1 overflow-x-auto pb-2 scrollbar-hide">
-          <button onclick="switchTab('pianifica')" id="tab-btn-pianifica" class="tab-btn px-4 py-1.5 rounded-lg text-sm font-bold bg-blue-100 text-blue-800 border-2 border-transparent">Pianifica</button>
-          <button onclick="switchTab('timeline')" id="tab-btn-timeline" class="tab-btn px-4 py-1.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 border-2 border-transparent">Timeline</button>
-          <button onclick="switchTab('mappa')" id="tab-btn-mappa" class="tab-btn px-4 py-1.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 border-2 border-transparent">Missioni Attive</button>
-          <button onclick="switchTab('tabella')" id="tab-btn-tabella" class="tab-btn px-4 py-1.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 border-2 border-transparent">Registro / Modifica</button>
-          <button onclick="switchTab('team')" id="tab-btn-team" class="tab-btn px-4 py-1.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 border-2 border-transparent">Team</button>
-          <button onclick="switchTab('anagrafica-luoghi')" id="tab-btn-anagrafica-luoghi" class="tab-btn px-4 py-1.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 border-2 border-transparent">Anagrafica Luoghi</button>
-          <button onclick="switchTab('luoghi')" id="tab-btn-luoghi" class="tab-btn px-4 py-1.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 border-2 border-transparent">Mappa Trasferte</button>
+        <nav class="fixed bottom-0 left-0 right-0 glass-tab-bar z-50 flex overflow-x-auto p-2 pb-6 lg:relative lg:border-none lg:p-0 lg:pb-2 lg:bg-transparent lg:backdrop-blur-none gap-2 shadow-[0_-10px_20px_rgba(0,0,0,0.05)] lg:shadow-none items-center scrollbar-hide">
+		  <button onclick="switchTab('richiesta')" id="tab-btn-richiesta" class="tab-btn flex-shrink-0 px-5 py-3 lg:py-1.5 rounded-xl lg:rounded-lg text-sm font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 border-2 border-transparent transition-all">Richiedi</button>
+		  <button onclick="switchTab('pianifica')" id="tab-btn-pianifica" class="tab-btn flex-shrink-0 px-5 py-3 lg:py-1.5 rounded-xl lg:rounded-lg text-sm lg:text-sm font-bold bg-blue-100 text-blue-800 border-2 border-transparent transition-all">Pianifica</button>          <button onclick="switchTab('timeline')" id="tab-btn-timeline" class="tab-btn px-4 py-1.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 border-2 border-transparent">Timeline</button>
+          <button onclick="switchTab('mappa')" id="tab-btn-mappa" class="tab-btn flex-shrink-0 px-5 py-3 lg:py-1.5 rounded-xl lg:rounded-lg text-sm lg:text-sm font-bold text-slate-700 border-2 border-transparent transition-all">Missioni Attive</button>
+          <button onclick="switchTab('tabella')" id="tab-btn-tabella" class="tab-btn flex-shrink-0 px-5 py-3 lg:py-1.5 rounded-xl lg:rounded-lg text-sm lg:text-sm font-bold text-slate-700 border-2 border-transparent transition-all">Registro / Modifica</button>
+          <button onclick="switchTab('team')" id="tab-btn-team" class="tab-btn flex-shrink-0 px-5 py-3 lg:py-1.5 rounded-xl lg:rounded-lg text-sm lg:text-sm font-bold text-slate-700 border-2 border-transparent transition-all">Team</button>
+          <button onclick="switchTab('anagrafica-luoghi')" id="tab-btn-anagrafica-luoghi" class="tab-btn flex-shrink-0 px-5 py-3 lg:py-1.5 rounded-xl lg:rounded-lg text-sm lg:text-sm font-bold text-slate-700 border-2 border-transparent transition-all">Anagrafica Luoghi</button>
+          <button onclick="switchTab('luoghi')" id="tab-btn-luoghi" class="tab-btn flex-shrink-0 px-5 py-3 lg:py-1.5 rounded-xl lg:rounded-lg text-sm lg:text-sm font-bold text-slate-700 border-2 border-transparent transition-all">Mappa Trasferte</button>
         </nav>
       </div>
     </header>
     <main class="flex-grow w-full max-w-[1400px] mx-auto p-4 sm:p-6 overflow-hidden relative">
+	<!-- SEZIONE NUOVA: RICHIESTA MISSIONE (LATO RICHIEDENTE) -->
+<!-- SEZIONE RICHIESTA MISSIONE (LATO RICHIEDENTE) -->
+      <section id="tab-richiesta" class="tab-content hidden h-full overflow-y-auto">
+        <div class="bg-white p-6 rounded-2xl shadow-md border-2 border-black max-w-5xl mx-auto mb-6">
+          <div class="flex items-center gap-3 mb-4 pb-3 border-b-2 border-slate-200">
+            <span class="text-3xl">📝</span>
+            <div>
+              <h2 class="text-2xl font-extrabold text-slate-900">Nuova Richiesta d'Intervento</h2>
+              <p class="text-xs font-bold text-slate-500">Invia una richiesta di supporto. Il gestore risorse riceverà il fabbisogno per assegnare i tecnici.</p>
+            </div>
+          </div>
+
+          <form id="form-richiesta-missione" onsubmit="salvaRichiestaMissione(event)" class="space-y-5">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+              <div>
+                  <label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Data Inizio *</label>
+                  <input type="date" id="req-inizio" class="input-modern" required />
+              </div>
+              <div>
+                  <label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Data Fine *</label>
+                  <input type="date" id="req-fine" class="input-modern" required />
+              </div>
+              <div class="relative">
+                  <label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Destinazione / Porto *</label>
+                  <input type="text" id="req-destinazione" autocomplete="off" class="input-modern" required placeholder="Cerca luogo o porto..." />
+                  <div id="req-autocomplete-list" class="autocomplete-items hidden"></div>
+              </div>
+              <div>
+                  <label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Piattaforma / Nave *</label>
+                  <input type="text" id="req-piattaforma" class="input-modern" required placeholder="Es. Fregata FREMM" />
+              </div>
+            </div>
+
+            <!-- PROFILO PROFESSIONALE RICHIESTO (DINAMICO DA TABELLA TECNICI) -->
+            <div class="bg-amber-50 p-4 rounded-xl border-2 border-amber-300">
+              <span class="text-xs font-extrabold text-amber-900 uppercase tracking-wider block mb-3">🛠️ Fabbisogno Operatore</span>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Funzione / Ruolo Richiesto *</label>
+                    <select id="req-funzione" class="input-modern" required>
+                        <option value="">-- Seleziona Funzione --</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Competenza Tecnica Richiesta *</label>
+                    <select id="req-competenza" class="input-modern" required>
+                        <option value="">-- Seleziona Competenza --</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Scopo dell'Intervento *</label>
+                    <input type="text" id="req-scopo" class="input-modern" required placeholder="Es. Ripristino Avaria / ECP" />
+                </div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <div class="relative">
+                <label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Prodotto (PN)</label>
+                <input type="text" id="req-pn" class="input-modern" placeholder="Part Number" />
+                <div id="req-autocomplete-pn-list" class="autocomplete-items hidden"></div>
+              </div>
+              <div>
+                <label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Nome Prodotto</label>
+                <input type="text" id="req-prodotto" class="input-modern" placeholder="Es. Cannone 76/62" />
+              </div>
+              <div>
+                <label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Serial Number</label>
+                <input type="text" id="req-serial" class="input-modern" placeholder="Matricola Sistema" />
+              </div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-extrabold text-slate-700 uppercase mb-2">Note & Dettagli Richiesta</label>
+                <textarea id="req-allegati" rows="2" class="input-modern" placeholder="Descrivi il motivo della richiesta, urgenza, riferimenti di banchina..."></textarea>
+            </div>
+
+            <div class="flex justify-end pt-2">
+              <button type="submit" class="w-full md:w-auto px-8 py-3.5 bg-amber-500 hover:bg-amber-600 text-black font-extrabold rounded-xl border-2 border-black shadow-[0_4px_0_0_#000] active:translate-y-1 active:shadow-none transition-all">
+                Invia Richiesta Missione
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+
       <section id="tab-pianifica" class="tab-content h-full overflow-y-auto">
         <div class="bg-white p-5 rounded-2xl shadow-md border-2 border-black flex-shrink-0 mb-4">
           <h2 class="text-xl font-extrabold text-slate-900 mb-5">Nuova Missione</h2>
@@ -311,9 +468,20 @@
 
       <section id="tab-timeline" class="tab-content hidden h-full overflow-y-auto pr-2">
         <div class="bg-white p-5 rounded-2xl shadow-md border-2 border-black flex flex-col relative min-h-min">
-            <div class="flex justify-between items-center mb-5 gap-3">
-                <div><h2 class="text-xl font-extrabold text-slate-900">Timeline Globale Risorse</h2></div>
-                <div class="flex bg-slate-100 p-1 rounded-lg border-2 border-black">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-5 gap-3">
+                <div class="flex items-center gap-4 flex-wrap">
+                    <h2 id="timeline-titolo" class="text-xl font-extrabold text-slate-900">Timeline Globale Risorse</h2>
+                    <!-- SELETTORE VISTA: RISORSE / PIATTAFORME -->
+                    <div class="inline-flex bg-slate-200 p-1 rounded-xl border-2 border-black shadow-sm">
+                        <button id="btn-view-risorse" onclick="impostaVistaTimeline('risorse')" class="px-4 py-1 text-xs font-extrabold rounded-lg bg-blue-600 text-white shadow transition-all">
+                            👤 Per Risorse
+                        </button>
+                        <button id="btn-view-piattaforme" onclick="impostaVistaTimeline('piattaforme')" class="px-4 py-1 text-xs font-extrabold rounded-lg text-slate-700 hover:text-slate-900 transition-all">
+                            🛳️ Per Piattaforma
+                        </button>
+                    </div>
+                </div>
+                <div class="flex bg-slate-100 p-1 rounded-lg border-2 border-black self-end md:self-auto">
                   <button onclick="timelineZoom('oggi')" class="px-4 py-1 text-xs font-extrabold text-slate-800 hover:bg-white border-2 border-transparent hover:border-black rounded transition-all">Oggi</button>
                   <button onclick="timelineZoom('mese')" class="px-4 py-1 text-xs font-extrabold text-slate-800 hover:bg-white border-2 border-transparent hover:border-black rounded transition-all">Mese</button>
                   <button onclick="timelineZoom('trimestre')" class="px-4 py-1 text-xs font-extrabold text-slate-800 hover:bg-white border-2 border-transparent hover:border-black rounded transition-all">Trim</button>
@@ -359,11 +527,9 @@
                   <button onclick="impostaMappaOggi()" class="px-5 py-2 bg-slate-100 font-extrabold text-slate-900 rounded-lg border-2 border-black shadow-[0_2px_0_0_#000]">Data Odierna</button>
               </div>
           </div>
-          <div class="flex gap-5 flex-grow min-h-0">
-              <div id="map" class="flex-grow shadow-inner rounded-xl z-10"></div>
-              
-              <!-- RIQUADRO LEGENDA RIPRISTINATO -->
-              <div class="w-80 md:w-96 bg-slate-50 border-2 border-black rounded-xl p-5 flex flex-col flex-shrink-0 z-20">
+          <div class="flex flex-col lg:flex-row gap-5 flex-grow min-h-0">
+              <div id="map" class="flex-grow shadow-inner rounded-xl z-10 min-h-[50vh] lg:min-h-0"></div>
+              <div class="w-full lg:w-96 bg-slate-50 border-2 border-black rounded-xl p-5 flex flex-col flex-shrink-0 z-20">
                   <h3 class="text-sm font-extrabold text-slate-900 mb-3 border-b-2 border-slate-300 pb-2">Legenda</h3>
                   <ul id="map-legend-list" class="space-y-3 overflow-y-auto pr-2 pb-2"></ul>
               </div>
@@ -467,7 +633,7 @@
                 </div>
             </div>
             <div class="flex flex-col lg:flex-row gap-5 flex-grow min-h-0">
-                <div id="map-luoghi" class="flex-grow shadow-inner rounded-xl z-10 border-2 border-black bg-slate-100"></div>
+                <div id="map-luoghi" class="flex-grow shadow-inner rounded-xl z-10 border-2 border-black bg-slate-100 min-h-[50vh] lg:min-h-0"></div>
                 <div class="w-full lg:w-[400px] bg-white border-2 border-black rounded-xl p-5 flex flex-col flex-shrink-0 z-20 shadow-md">
                     <h3 class="text-lg font-extrabold text-slate-900 mb-4 border-b-2 border-slate-300 pb-2">Visite per Destinazione</h3>
                     <div class="relative flex-grow min-h-[300px] w-full flex items-center justify-center">
@@ -489,9 +655,9 @@
           <button onclick="navigaA('home')" class="p-2 hover:bg-slate-200 rounded-lg transition-colors text-slate-900 border-2 border-transparent hover:border-black"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg></button>
           <h1 class="text-xl font-extrabold text-slate-900">Gestione Ritorni dal Campo</h1>
         </div>
-        <nav class="flex space-x-2 pb-2">
-          <button onclick="switchTabRitorni('dash')" id="tab-btn-rit-dash" class="tab-btn-rit px-4 py-1.5 rounded-lg text-sm font-bold border-2 border-transparent transition-colors">Dashboard Guasti</button>
-		  <button onclick="switchTabRitorni('assiemi')" id="tab-btn-rit-assiemi" class="tab-btn-rit px-4 py-1.5 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 border-2 border-transparent transition-colors">Analisi Sottoassiemi</button>
+        <nav class="fixed bottom-0 left-0 right-0 glass-tab-bar z-50 flex p-2 pb-6 lg:relative lg:border-none lg:p-0 lg:pb-2 lg:bg-transparent lg:backdrop-blur-none gap-2 shadow-[0_-10px_20px_rgba(0,0,0,0.05)] lg:shadow-none items-center">
+          <button onclick="switchTabRitorni('dash')" id="tab-btn-rit-dash" class="tab-btn-rit flex-1 lg:flex-none px-4 py-3 lg:py-1.5 rounded-xl lg:rounded-lg text-sm font-bold border-2 border-transparent transition-colors">Dashboard</button>
+		  <button onclick="switchTabRitorni('assiemi')" id="tab-btn-rit-assiemi" class="tab-btn-rit flex-1 lg:flex-none px-4 py-3 lg:py-1.5 rounded-xl lg:rounded-lg text-sm font-bold text-slate-700 border-2 border-transparent transition-colors">Sottoassiemi</button>
         </nav>
       </div>
     </header>
@@ -591,10 +757,10 @@
           <button onclick="navigaA('home')" class="p-2 hover:bg-slate-200 rounded-lg transition-colors border-2 border-transparent hover:border-black"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg></button>
           <h1 class="text-xl font-extrabold text-slate-900">Gestione As-Maintained</h1>
         </div>
-        <nav class="flex space-x-2 pb-2 overflow-x-auto scrollbar-hide">
-          <button onclick="switchTabAsMaintained('salute')" id="tab-btn-salute" class="tab-btn-asm px-4 py-1.5 rounded-lg text-sm font-bold border-2 border-transparent">Salute (Per Sottoinsiemi)</button>
-          <button onclick="switchTabAsMaintained('piattaforme')" id="tab-btn-piattaforme" class="tab-btn-asm px-4 py-1.5 rounded-lg text-sm font-bold border-2 border-transparent">Salute (Per Piattaforma)</button>
-          <button onclick="switchTabAsMaintained('ecp')" id="tab-btn-ecp" class="tab-btn-asm px-4 py-1.5 rounded-lg text-sm font-bold border-2 border-transparent">Stato Implementazione ECP</button>
+        <nav class="fixed bottom-0 left-0 right-0 glass-tab-bar z-50 flex overflow-x-auto p-2 pb-6 lg:relative lg:border-none lg:p-0 lg:pb-2 lg:bg-transparent lg:backdrop-blur-none gap-2 shadow-[0_-10px_20px_rgba(0,0,0,0.05)] lg:shadow-none items-center scrollbar-hide">
+          <button onclick="switchTabAsMaintained('salute')" id="tab-btn-salute" class="tab-btn-asm flex-shrink-0 px-5 py-3 lg:py-1.5 rounded-xl lg:rounded-lg text-sm font-bold border-2 border-transparent">Salute Sottoinsiemi</button>
+          <button onclick="switchTabAsMaintained('piattaforme')" id="tab-btn-piattaforme" class="tab-btn-asm flex-shrink-0 px-5 py-3 lg:py-1.5 rounded-xl lg:rounded-lg text-sm font-bold border-2 border-transparent">Piattaforme</button>
+          <button onclick="switchTabAsMaintained('ecp')" id="tab-btn-ecp" class="tab-btn-asm flex-shrink-0 px-5 py-3 lg:py-1.5 rounded-xl lg:rounded-lg text-sm font-bold border-2 border-transparent">Stato ECP</button>
         </nav>
       </div>
     </header>
@@ -701,8 +867,8 @@
   </div>
 
   <!-- MODALI -->
-  <div id="modal-modifica-missione" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm overflow-y-auto h-full w-full z-[100] flex items-start justify-center p-4 py-10">
-    <div class="modal-enter p-8 border-4 border-black w-full max-w-3xl rounded-2xl bg-white relative">
+  <div id="modal-modifica-missione" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm overflow-y-auto h-full w-full z-[100] flex items-start justify-center p-4 py-10 modal-overlay-mobile">
+    <div class="modal-enter p-8 border-4 border-black w-full max-w-3xl rounded-2xl bg-white relative modal-overlay-mobile">
       <button onclick="chiudiModale()" class="absolute top-5 right-5 text-slate-800 bg-slate-100 border-2 border-black rounded-lg p-1">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
       </button>
@@ -737,15 +903,15 @@
     </div>
   </div>
 
-  <div id="modal-dettaglio-missione" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-sm overflow-y-auto h-full w-full z-[100] flex items-start justify-center p-4 py-10">
-    <div class="modal-enter p-8 border-4 border-black w-full max-w-3xl rounded-2xl bg-white relative">
+  <div id="modal-dettaglio-missione" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-sm overflow-y-auto h-full w-full z-[100] flex items-start justify-center p-4 py-10 modal-overlay-mobile">
+    <div class="modal-enter p-8 border-4 border-black w-full max-w-3xl rounded-2xl bg-white relative modal-overlay-mobile">
       <button onclick="document.getElementById('modal-dettaglio-missione').classList.add('hidden')" class="absolute top-5 right-5 text-slate-800 bg-slate-100 border-2 border-black rounded-lg p-1"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
       <div id="dettaglio-missione-content"></div>
     </div>
   </div>
 
-  <div id="modal-segnala-problema" class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-md overflow-y-auto h-full w-full z-[110] flex items-start justify-center p-4 py-10">
-    <div class="modal-enter p-8 border-4 border-black w-full max-w-2xl rounded-2xl bg-white relative">
+  <div id="modal-segnala-problema" class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-md overflow-y-auto h-full w-full z-[110] flex items-start justify-center p-4 py-10 modal-overlay-mobile">
+    <div class="modal-enter p-8 border-4 border-black w-full max-w-2xl rounded-2xl bg-white relative modal-overlay-mobile">
       <button onclick="document.getElementById('modal-segnala-problema').classList.add('hidden')" class="absolute top-5 right-5 text-slate-800 bg-slate-100 border-2 border-black rounded-lg p-1"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
       <h3 class="text-2xl font-extrabold text-slate-900 mb-1">Segnala Problema</h3>
       <p id="segnala-prob-missione-label" class="text-sm font-bold text-slate-500 mb-6 pb-3 border-b-2 border-slate-200"></p>
@@ -774,8 +940,8 @@
     </div>
   </div>
 
-  <div id="modal-dettaglio-problema" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-sm overflow-y-auto h-full w-full z-[110] flex items-start justify-center p-4 py-10">
-    <div class="modal-enter p-8 border-4 border-black w-full max-w-4xl rounded-2xl bg-white relative">
+  <div id="modal-dettaglio-problema" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-sm overflow-y-auto h-full w-full z-[110] flex items-start justify-center p-4 py-10 modal-overlay-mobile">
+    <div class="modal-enter p-8 border-4 border-black w-full max-w-4xl rounded-2xl bg-white relative modal-overlay-mobile">
       <button onclick="document.getElementById('modal-dettaglio-problema').classList.add('hidden')" class="absolute top-5 right-5 text-slate-800 bg-slate-100 border-2 border-black rounded-lg p-1"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
       <h3 class="text-2xl font-extrabold text-slate-900 mb-2 border-b-2 border-slate-200 pb-3">Dettaglio Problema e Interventi</h3>
       <div id="dettaglio-problema-content" class="text-sm text-slate-800 mt-5"></div>
@@ -796,8 +962,8 @@
     </div>
   </div>
 
-  <div id="modal-sostituzione-lru" class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-md overflow-y-auto h-full w-full z-[120] flex items-start justify-center p-4 py-10">
-    <div class="modal-enter p-8 border-4 border-black w-full max-w-xl rounded-2xl bg-white relative">
+  <div id="modal-sostituzione-lru" class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-md overflow-y-auto h-full w-full z-[120] flex items-start justify-center p-4 py-10 modal-overlay-mobile">
+    <div class="modal-enter p-8 border-4 border-black w-full max-w-xl rounded-2xl bg-white relative modal-overlay-mobile">
       <button onclick="document.getElementById('modal-sostituzione-lru').classList.add('hidden')" class="absolute top-5 right-5 text-slate-800 bg-slate-100 border-2 border-black rounded-lg p-1"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
       
       <h3 class="text-2xl font-extrabold text-slate-900 mb-1">Sostituzione LRU</h3>
