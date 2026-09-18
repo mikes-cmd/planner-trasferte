@@ -32,6 +32,7 @@ let timeline, miniTimeline, map, mapLayer, mapLuoghi, mapLuoghiLayer, chartLuogh
 
 let sortColPlanner = 'inizio'; let sortDescPlanner = true;
 let sortColRitorni = 'data'; let sortDescRitorni = true;
+let timelineMode = 'risorse';
 
 const COLORI = ['#2563eb', '#059669', '#ea580c', '#0ea5e9', '#dc2626', '#16a34a', '#c2410c', '#0891b2', '#0d9488', '#b91c1c', '#ca8a04', '#4338ca'];
 function getColorForTecnico(nome) { let hash = 0; for (let i=0; i<nome.length; i++) hash = nome.charCodeAt(i) + ((hash<<5)-hash); return COLORI[Math.abs(hash) % COLORI.length]; }
@@ -227,7 +228,25 @@ function getStrutturaSQL() {
         CREATE TABLE Sottoassiemi (PN_Sottoassieme TEXT, NomeSottoassieme TEXT, PN_Assieme_Padre TEXT, PRIMARY KEY(PN_Sottoassieme, PN_Assieme_Padre), FOREIGN KEY (PN_Assieme_Padre) REFERENCES Prodotti(PN_Prodotto));
         CREATE TABLE CodiciProblematica (ID_CodiceProblematica TEXT PRIMARY KEY, DescrizioneProblematica TEXT);
         
-        CREATE TABLE Trasferte (ID_Missione TEXT PRIMARY KEY, ID_Operatore TEXT, ID_Luogo TEXT, DataInizio TEXT, DataFine TEXT, Scopo TEXT, Piattaforma TEXT, PN_Prodotto TEXT, SerialNumber TEXT, AllegatiLocali TEXT, AllegatiAggiuntivi TEXT, lat REAL, lon REAL, FOREIGN KEY (ID_Operatore) REFERENCES Tecnici(ID_Operatore), FOREIGN KEY (ID_Luogo) REFERENCES Luoghi(ID_Luogo), FOREIGN KEY (PN_Prodotto) REFERENCES Prodotti(PN_Prodotto));
+		CREATE TABLE Trasferte (
+            ID_Missione TEXT PRIMARY KEY, 
+            ID_Operatore TEXT, 
+            ID_Luogo TEXT, 
+            DataInizio TEXT, 
+            DataFine TEXT, 
+            Scopo TEXT, 
+            Piattaforma TEXT, 
+            PN_Prodotto TEXT, 
+            SerialNumber TEXT, 
+            AllegatiLocali TEXT, 
+            AllegatiAggiuntivi TEXT, 
+            Stato TEXT DEFAULT 'Confermata', 
+            FunzioneRichiesta TEXT, 
+            CompetenzaRichiesta TEXT, 
+            FOREIGN KEY (ID_Operatore) REFERENCES Tecnici(ID_Operatore), 
+            FOREIGN KEY (ID_Luogo) REFERENCES Luoghi(ID_Luogo), 
+            FOREIGN KEY (PN_Prodotto) REFERENCES Prodotti(PN_Prodotto)
+        );        
         CREATE TABLE Problemi (ID_Problema TEXT PRIMARY KEY, ID_Missione TEXT NOT NULL, PN_Assieme TEXT NOT NULL, SN_Assieme TEXT, DataSegnalazione TEXT, ID_CodiceProblematica TEXT, DescrizioneProblema TEXT, Sintomi TEXT, FOREIGN KEY (ID_Missione) REFERENCES Trasferte(ID_Missione) ON DELETE CASCADE, FOREIGN KEY (PN_Assieme) REFERENCES Sottoassiemi(PN_Sottoassieme), FOREIGN KEY (ID_CodiceProblematica) REFERENCES CodiciProblematica(ID_CodiceProblematica));
         CREATE TABLE Soluzioni (ID_Soluzione TEXT PRIMARY KEY, ID_Problema TEXT NOT NULL, DataSoluzione TEXT, Azione TEXT, Esito TEXT, FOREIGN KEY (ID_Problema) REFERENCES Problemi(ID_Problema) ON DELETE CASCADE);
         
@@ -290,7 +309,6 @@ const resMiss = sqlDB.exec("SELECT * FROM Trasferte");
                 const tecnico = String(row[1] || '').trim();
                 const destinazione = String(row[2] || '').trim();
 
-                // Normalizzazione date
                 let inizio = row[3] ? parseExcelDate(row[3]) : '';
                 let fine = row[4] ? parseExcelDate(row[4]) : inizio;
                 if (inizio.length > 10) inizio = inizio.substring(0, 10);
@@ -303,26 +321,11 @@ const resMiss = sqlDB.exec("SELECT * FROM Trasferte");
                 const serial = row[8] || '';
                 const allegatiLoc = row[9] || '';
                 const allegatiAgg = row[10] || '';
-
-                // Recupero coordinate robusto
-                let lat = parseFloat(row[11]);
-                let lon = parseFloat(row[12]);
-
-                if (isNaN(lat) || isNaN(lon) || (lat === 0 && lon === 0)) {
-                    const destClean = destinazione.toLowerCase().replace(/[^a-z0-9]/g, '');
-                    const lMatch = luoghi.find(l => {
-                        const lClean = String(l.ID_Luogo || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-                        return lClean === destClean || lClean.includes(destClean) || destClean.includes(lClean);
-                    });
-
-                    if (lMatch && !isNaN(parseFloat(lMatch.lat)) && !isNaN(parseFloat(lMatch.lon))) {
-                        lat = parseFloat(lMatch.lat);
-                        lon = parseFloat(lMatch.lon);
-                    } else {
-                        lat = 0;
-                        lon = 0;
-                    }
-                }
+                
+                // Nuovi indici dopo la rimozione di lat e lon
+                const stato = row[11] || 'Confermata';
+                const funzReq = row[12] || '';
+                const compReq = row[13] || '';
 
                 return {
                     id: idMiss,
@@ -337,8 +340,9 @@ const resMiss = sqlDB.exec("SELECT * FROM Trasferte");
                     serialNumber: serial,
                     allegatiLocali: allegatiLoc,
                     allegatiAggiuntivi: allegatiAgg,
-                    lat: lat,
-                    lon: lon
+                    stato: stato,
+                    funzioneRichiesta: funzReq,
+                    competenzaRichiesta: compReq
                 };
             });
 
@@ -509,7 +513,12 @@ async function syncData() {
     sottoassiemi.forEach(s => sqlDB.run(`INSERT INTO Sottoassiemi (PN_Sottoassieme, NomeSottoassieme, PN_Assieme_Padre) VALUES ('${escapeSql(s.PN_Sottoassieme)}', '${escapeSql(s.NomeSottoassieme)}', '${escapeSql(s.PN_Assieme_Padre)}')`));
     codiciProblematica.forEach(c => sqlDB.run(`INSERT INTO CodiciProblematica (ID_CodiceProblematica, DescrizioneProblematica) VALUES ('${escapeSql(c.id)}', '${escapeSql(c.desc)}')`));
     
-    missioni.forEach(m => sqlDB.run(`INSERT INTO Trasferte (ID_Missione, ID_Operatore, ID_Luogo, DataInizio, DataFine, Scopo, Piattaforma, PN_Prodotto, SerialNumber, AllegatiLocali, AllegatiAggiuntivi, lat, lon) VALUES ('${m.id}', '${escapeSql(m.tecnico)}', '${escapeSql(m.destinazione)}', '${m.inizio}', '${m.fine}', '${escapeSql(m.scopo)}', '${escapeSql(m.piattaforma)}', '${escapeSql(m.prodottoId)}', '${escapeSql(m.serialNumber)}', '${escapeSql(m.allegatiLocali)}', '${escapeSql(m.allegatiAggiuntivi)}', ${m.lat}, ${m.lon})`));
+	missioni.forEach(m => sqlDB.run(`INSERT INTO Trasferte VALUES (
+        '${m.id}', '${escapeSql(m.tecnico)}', '${escapeSql(m.destinazione)}', '${m.inizio}', '${m.fine}', 
+        '${escapeSql(m.scopo)}', '${escapeSql(m.piattaforma)}', '${escapeSql(m.prodottoId)}', '${escapeSql(m.serialNumber)}', 
+        '${escapeSql(m.allegatiLocali)}', '${escapeSql(m.allegatiAggiuntivi)}', 
+        '${escapeSql(m.stato || 'Confermata')}', '${escapeSql(m.funzioneRichiesta || '')}', '${escapeSql(m.competenzaRichiesta || '')}'
+    )`));
     
     problematiche.forEach(p => sqlDB.run(`INSERT INTO Problemi (ID_Problema, ID_Missione, PN_Assieme, SN_Assieme, DataSegnalazione, ID_CodiceProblematica, DescrizioneProblema, Sintomi) VALUES ('${p.id}', '${p.id_missione}', '${escapeSql(p.pn_assieme)}', '${escapeSql(p.sn_assieme || '')}', '${p.data}', '${escapeSql(p.codice)}', '${escapeSql(p.desc)}', '${escapeSql(p.sintomi)}')`));
     soluzioni.forEach(s => sqlDB.run(`INSERT INTO Soluzioni (ID_Soluzione, ID_Problema, DataSoluzione, Azione, Esito) VALUES ('${s.id}', '${s.id_problema}', '${s.data}', '${escapeSql(s.azione)}', '${escapeSql(s.esito)}')`));
@@ -569,8 +578,25 @@ async function elaboraFileExcel(fileBlob) {
                 if (wb.Sheets["CodiciProblematica"]) XLSX.utils.sheet_to_json(wb.Sheets["CodiciProblematica"]).forEach(r => { const id = r.ID_CodiceProblematica || r.Codice; if(id) tryInsert(`INSERT OR REPLACE INTO CodiciProblematica VALUES ('${escapeSql(id)}', '${escapeSql(r.DescrizioneProblematica || r.Descrizione)}')`, "CodiciProblematica"); });
                 
                 faseCorrente = "Importazione Foglio: Trasferte";
-                if (wb.Sheets["Trasferte"]) XLSX.utils.sheet_to_json(wb.Sheets["Trasferte"]).forEach(r => { const id = String(r.ID_Missione || r.ID); if(id) tryInsert(`INSERT OR REPLACE INTO Trasferte VALUES ('${escapeSql(id)}', '${escapeSql(r.ID_Operatore || r.Tecnico)}', '${escapeSql(r.ID_Luogo || r.Destinazione)}', '${parseExcelDate(r.DataInizio)}', '${parseExcelDate(r.DataFine)}', '${escapeSql(r.Scopo)}', '${escapeSql(r.Piattaforma)}', '${escapeSql(r.PN_Prodotto)}', '${escapeSql(r.SerialNumber)}', '${escapeSql(r.AllegatiLocali)}', '${escapeSql(r.AllegatiAggiuntivi)}', ${parseExcelNumber(r.lat)}, ${parseExcelNumber(r.lon)})`, "Trasferte"); });
-                
+if (wb.Sheets["Trasferte"]) XLSX.utils.sheet_to_json(wb.Sheets["Trasferte"]).forEach(r => { 
+    const id = String(r.ID_Missione || r.ID); 
+    if(id) tryInsert(`INSERT OR REPLACE INTO Trasferte VALUES (
+        '${escapeSql(id)}', 
+        '${escapeSql(r.ID_Operatore || r.Tecnico)}', 
+        '${escapeSql(r.ID_Luogo || r.Destinazione)}', 
+        '${parseExcelDate(r.DataInizio)}', 
+        '${parseExcelDate(r.DataFine)}', 
+        '${escapeSql(r.Scopo)}', 
+        '${escapeSql(r.Piattaforma)}', 
+        '${escapeSql(r.PN_Prodotto)}', 
+        '${escapeSql(r.SerialNumber)}', 
+        '${escapeSql(r.AllegatiLocali)}', 
+        '${escapeSql(r.AllegatiAggiuntivi)}', 
+        '${escapeSql(r.Stato || 'Confermata')}', 
+        '${escapeSql(r.FunzioneRichiesta || '')}', 
+        '${escapeSql(r.CompetenzaRichiesta || '')}'
+    )`, "Trasferte"); 
+});
                 faseCorrente = "Importazione Foglio: Problemi";
                 if (wb.Sheets["Problemi"]) XLSX.utils.sheet_to_json(wb.Sheets["Problemi"]).forEach(r => { const id = String(r.ID_Problema || r.ID); if(id) tryInsert(`INSERT OR REPLACE INTO Problemi VALUES ('${escapeSql(id)}', '${escapeSql(r.ID_Missione)}', '${escapeSql(r.PN_Assieme)}', '${escapeSql(r.SN_Assieme || '')}', '${parseExcelDate(r.DataSegnalazione)}', '${escapeSql(r.ID_CodiceProblematica)}', '${escapeSql(r.DescrizioneProblema)}', '${escapeSql(r.Sintomi)}')`, "Problemi"); });
                 
@@ -1285,11 +1311,56 @@ function apriDettaglioProblema(id_prob) {
     document.getElementById('modal-dettaglio-problema').classList.remove('hidden');
 }
 
+
+function apriSegnalaProblemaDaMissione(id_missione) {
+    const m = missioni.find(x => String(x.id) === String(id_missione));
+    if (!m) return alert("Missione non trovata.");
+
+    // 1. Imposta ID e label di contesto
+    document.getElementById('segnala-prob-missione-id').value = m.id;
+    const labelMissione = document.getElementById('segnala-prob-missione-label');
+    if (labelMissione) {
+        labelMissione.innerText = `Missione #${m.id} - ${m.destinazione} (${m.tecnico})`;
+    }
+
+    // 2. Data odierna predefinita
+    document.getElementById('segnala-prob-data').value = new Date().toISOString().split('T')[0];
+
+    // 3. Popola il dropdown dei Codici Guasto dal database
+    const selectCodice = document.getElementById('segnala-prob-codice');
+    if (selectCodice) {
+        if (codiciProblematica.length > 0) {
+            selectCodice.innerHTML = codiciProblematica.map(c => 
+                `<option value="${c.id}">${c.id} - ${c.desc}</option>`
+            ).join('');
+        } else {
+            selectCodice.innerHTML = '<option value="ERR-001">ERR-001 - Anomalia Generica</option>';
+        }
+    }
+
+    // 4. Precompila PN ed SN se il prodotto è tracciato nella missione
+    const inputPn = document.getElementById('segnala-prob-pn');
+    const inputNome = document.getElementById('segnala-prob-nome-assieme');
+    const inputSn = document.getElementById('segnala-prob-sn-assieme');
+
+    if (inputPn) inputPn.value = m.prodottoId || '';
+    if (inputNome) inputNome.value = m.prodottoNome || '';
+    if (inputSn) inputSn.value = m.serialNumber || '';
+
+    // 5. Pulisci campi di testo descrittivi
+    document.getElementById('segnala-prob-desc').value = '';
+    document.getElementById('segnala-prob-sintomi').value = '';
+
+    // 6. Mostra il modale di segnalazione (z-[110] per stare sopra il modale missione)
+    document.getElementById('modal-segnala-problema').classList.remove('hidden');
+}
+
 async function salvaProblematicaSingola(e) { 
     e.preventDefault(); 
     if(isReadOnly) return alert("Sola Lettura"); 
     const id_miss = document.getElementById('segnala-prob-missione-id').value; 
     if(!id_miss) return alert("Errore ID Missione."); 
+
     problematiche.push({ 
         id: String(calcolaProssimoId(problematiche)), 
         id_missione: id_miss, 
@@ -1300,10 +1371,15 @@ async function salvaProblematicaSingola(e) {
         pn_assieme: document.getElementById('segnala-prob-pn').value, 
         sn_assieme: document.getElementById('segnala-prob-sn-assieme').value
     }); 
+
     await syncData(); 
     e.target.reset(); 
     document.getElementById('modal-segnala-problema').classList.add('hidden'); 
     mostraNotificaConferma("Problematica registrata con successo!"); 
+
+    // Ricarica la scheda della missione per mostrare subito il nuovo guasto aggiunto
+    apriDettaglioMissione(id_miss);
+
     if(document.getElementById('screen-ritorni').classList.contains('active')) renderTabellaProblematiche(); 
 }
 
@@ -1341,6 +1417,7 @@ function filtraPlanner() {
 
 function inizializzaUIPlanner() { 
     popolaSelectTecnici(); 
+    popolaSelectRichiesta(); // <-- AGGIUNTO QUI
     renderTabella(); 
     renderListaTeam(); 
     renderListaLuoghi(); 
@@ -1366,19 +1443,14 @@ async function salvaMissione(e) {
     const arrayOps = tec.split(';').map(s=>s.trim()).filter(Boolean);
     let conflitto = null;
     for (let op of arrayOps) {
-        const sovrappone = missioni.some(m => { const mOps = m.tecnico.split(';').map(s=>s.trim()).filter(Boolean); return mOps.includes(op) && ini <= m.fine && fine >= m.inizio; });
+        const sovrappone = missioni.some(m => { 
+            const mOps = m.tecnico.split(';').map(s=>s.trim()).filter(Boolean); 
+            return mOps.includes(op) && ini <= m.fine && fine >= m.inizio; 
+        });
         if (sovrappone) { conflitto = op; break; }
     }
     if (conflitto) return alert(`Impossibile assegnare la missione: il tecnico ${conflitto} ha già una trasferta in queste date.`);
-    
-    let lat=0, lon=0;
-    let lCache = luoghi.find(l => String(l.ID_Luogo).trim().toLowerCase() === dest.toLowerCase());
-    if(lCache) { 
-        lat = lCache.lat; lon = lCache.lon; 
-    } else if (selectedGeo) { 
-        lat = selectedGeo.lat; lon = selectedGeo.lon; luoghi.push({ ID_Luogo: dest, lat, lon }); 
-    }
-    
+
     const prodottoNome = document.getElementById('input-prodotto').value.trim();
     const prodottoPn = document.getElementById('input-pn').value.trim();
     if (prodottoPn && !prodotti.some(p => String(p.PN_Prodotto).trim().toLowerCase() === prodottoPn.toLowerCase())) {
@@ -1386,18 +1458,32 @@ async function salvaMissione(e) {
     }
 
     missioni.push({
-        id: String(calcolaProssimoId(missioni)), tecnico: tec, destinazione: dest, inizio: ini, fine: fine, lat, lon, 
-        scopo: document.getElementById('input-scopo').value, piattaforma: document.getElementById('input-piattaforma').value,
-        prodottoNome, prodottoId: prodottoPn, serialNumber: document.getElementById('input-serial').value, 
-        allegatiLocali: document.getElementById('input-allegati').value, allegatiAggiuntivi: document.getElementById('input-allegati-agg').value
+        id: String(calcolaProssimoId(missioni)), 
+        tecnico: tec, 
+        destinazione: dest, 
+        inizio: ini, 
+        fine: fine, 
+        scopo: document.getElementById('input-scopo').value, 
+        piattaforma: document.getElementById('input-piattaforma').value,
+        prodottoNome, 
+        prodottoId: prodottoPn, 
+        serialNumber: document.getElementById('input-serial').value, 
+        allegatiLocali: document.getElementById('input-allegati').value, 
+        allegatiAggiuntivi: document.getElementById('input-allegati-agg').value,
+        stato: 'Confermata',
+        funzioneRichiesta: '',
+        competenzaRichiesta: ''
     });
     
     await syncData();
     mostraNotificaConferma("Trasferta assegnata con successo!");
-    e.target.reset(); document.getElementById('input-tecnico').value=''; selectedGeo=null;
+    e.target.reset(); 
+    document.getElementById('input-tecnico').value=''; 
     document.querySelectorAll('.tecnico-checkbox').forEach(cb => cb.checked = false);
     document.getElementById('custom-select-value').innerText = "Seleziona...";
-    setupAutocomplete(); inizializzaUIPlanner(); switchTab('timeline');
+    setupAutocomplete(); 
+    inizializzaUIPlanner(); 
+    switchTab('timeline');
 }
 
 function toggleDropdown(e) { if(e)e.stopPropagation(); document.getElementById('custom-select-options').classList.toggle('hidden'); }
@@ -1677,7 +1763,14 @@ async function rimuoviLuogo(idx) {
 }
 
 
-function getStatoMissione(inizioStr, fineStr) {
+function getStatoMissione(inizioStr, fineStr, stato = 'Confermata') {
+    // Se la missione è ancora una richiesta, ha la priorità assoluta sulle date
+    if (String(stato).toLowerCase() === 'richiesta') {
+        return `<span class="px-2 py-1 bg-amber-100 text-amber-900 border-2 border-dashed border-amber-600 rounded-md text-[10px] uppercase font-extrabold flex items-center gap-1 w-max">
+            <span>⏳</span> In Approvazione
+        </span>`;
+    }
+
     const oggi = new Date().toISOString().split('T')[0];
     if (fineStr < oggi) return `<span class="px-2 py-1 bg-slate-200 text-slate-900 rounded-md text-[10px] uppercase font-extrabold border-2 border-black">Conclusa</span>`;
     if (inizioStr > oggi) return `<span class="px-2 py-1 bg-blue-100 text-blue-900 rounded-md text-[10px] uppercase font-extrabold border-2 border-black">Futura</span>`;
@@ -1703,7 +1796,7 @@ function renderTabella() {
         
         return `<tr ondblclick="apriDettaglioMissione('${m.id}')" class="planner-row hover:bg-blue-50 group transition-colors cursor-pointer" data-search="${searchStr}">
             <td class="p-4 pl-6 border-r border-slate-300"><div class="flex items-center gap-1.5 mb-1">${badges}</div><div class="font-bold text-slate-900 text-xs">${m.tecnico.replace(/;/g, ', ')}</div></td>
-            <td class="p-4 border-r border-slate-300">${getStatoMissione(m.inizio, m.fine)}</td>
+            <td class="p-4 border-r border-slate-300">${getStatoMissione(m.inizio, m.fine, m.stato)}</td>
             <td class="p-4 border-r border-slate-300"><b class="text-slate-900">${m.destinazione}</b> <span class="text-[11px] font-bold text-slate-600 bg-slate-200 px-1 rounded ml-1 border border-slate-300">${m.piattaforma || 'N/D'}</span><br><span class="text-xs font-medium text-slate-800">${m.scopo}</span></td>
             <td class="p-4 border-r border-slate-300 text-xs font-extrabold text-slate-900">${new Date(m.inizio).toLocaleDateString('it-IT')}<br><span class="text-slate-600 font-bold">a ${new Date(m.fine).toLocaleDateString('it-IT')}</span></td>
             <td class="p-4 pr-6 text-right opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
@@ -1716,31 +1809,107 @@ function renderTabella() {
 }
 
 function apriDettaglioMissione(id) {
-    const m = missioni.find(x => String(x.id) === String(id)); if (!m) return;
+    const m = missioni.find(x => String(x.id) === String(id)); 
+    if (!m) return;
+
+    const isRichiesta = String(m.stato || '').toLowerCase() === 'richiesta';
+
+    // Banner interattivo per la gestione del fabbisogno se la missione è ancora una Richiesta
+    const bannerRichiesta = isRichiesta ? `
+        <div class="mb-5 p-4 bg-amber-50 border-2 border-dashed border-amber-500 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-inner">
+            <div>
+                <span class="text-[10px] font-black text-amber-800 bg-amber-200 border border-amber-400 px-2 py-0.5 rounded uppercase tracking-wider">⏳ Richiesta d'Intervento da Assegnare</span>
+                <p class="text-sm font-extrabold text-slate-900 mt-1">
+                    Profilo richiesto: <span class="text-amber-900">${m.funzioneRichiesta || 'Tecnico'} (${m.competenzaRichiesta || 'Competenza N/D'})</span>
+                </p>
+            </div>
+            <button onclick="document.getElementById('modal-dettaglio-missione').classList.add('hidden'); apriModificaMissione('${m.id}');" class="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl border-2 border-black shadow-[0_3px_0_0_#000] active:translate-y-0.5 transition-all flex items-center gap-1.5 flex-shrink-0">
+                👤 Assegna Tecnici e Conferma
+            </button>
+        </div>` : '';
+
+    // Elenco problematiche segnalate
     let probsMissione = problematiche.filter(p => String(p.id_missione) === String(m.id));
     let probHTML = probsMissione.length === 0 ? `<p class="text-sm font-bold text-slate-500">Nessun guasto registrato.</p>` :
         probsMissione.map(p => {
             const codObj = codiciProblematica.find(c => String(c.id) === String(p.codice)); 
             const strCodice = codObj ? `${codObj.id}` : (p.codice || 'N/D');
-            return `<div class="bg-rose-50 border-2 border-rose-300 p-3 rounded-xl mb-3 shadow-inner"><div class="flex justify-between items-center mb-1"><span class="text-xs font-extrabold text-rose-900">${p.data} - Codice: ${strCodice}</span><button onclick="apriDettaglioProblema('${p.id}');" class="text-[10px] font-bold bg-white border-2 border-black px-2 py-1 rounded hover:bg-slate-100 transition-colors">Vedi Dettaglio Guasto</button></div><p class="text-sm font-bold text-slate-900">${p.desc}</p>${p.sintomi ? `<p class="text-xs text-slate-700 mt-1">Sintomo: ${p.sintomi}</p>` : ''}</div>`;
-			}).join('');
+            return `
+            <div class="bg-rose-50 border-2 border-rose-300 p-3 rounded-xl mb-3 shadow-inner">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-xs font-extrabold text-rose-900">${p.data} - Codice: ${strCodice}</span>
+                    <button onclick="apriDettaglioProblema('${p.id}');" class="text-[10px] font-bold bg-white border-2 border-black px-2 py-1 rounded hover:bg-slate-100 transition-colors">
+                        Vedi Dettaglio Guasto
+                    </button>
+                </div>
+                <p class="text-sm font-bold text-slate-900">${p.desc}</p>
+                ${p.sintomi ? `<p class="text-xs text-slate-700 mt-1">Sintomo: ${p.sintomi}</p>` : ''}
+            </div>`;
+        }).join('');
 
+    // Controllo data futura per abilitazione segnalazione guasto
     const isFutura = m.inizio > new Date().toISOString().split('T')[0];
-    let btnSegnala = isFutura ? `<button disabled class="px-4 py-2 bg-slate-200 text-slate-400 font-extrabold text-xs rounded-xl border-2 border-slate-300 cursor-not-allowed">Trasferta Futura</button>` : `<button onclick="apriSegnalaProblemaDaMissione('${m.id}')" class="px-4 py-2 bg-rose-600 text-white font-extrabold text-xs rounded-xl border-2 border-black shadow-[0_3px_0_0_#000]">+ Segnala Problema</button>`;
+    let btnSegnala = isFutura 
+        ? `<button disabled class="px-4 py-2 bg-slate-200 text-slate-400 font-extrabold text-xs rounded-xl border-2 border-slate-300 cursor-not-allowed">Trasferta Futura</button>` 
+        : `<button onclick="apriSegnalaProblemaDaMissione('${m.id}')" class="px-4 py-2 bg-rose-600 text-white font-extrabold text-xs rounded-xl border-2 border-black shadow-[0_3px_0_0_#000] hover:bg-rose-700 active:translate-y-0.5 transition-all">+ Segnala Problema</button>`;
+
+    // Etichetta o nominativi del Team
+    const teamHTML = isRichiesta 
+        ? `<span class="text-amber-800 font-bold italic">${m.tecnico}</span>` 
+        : `<b class="text-base text-slate-900 leading-snug">${m.tecnico.replace(/;/g, '<br>')}</b>`;
 
     document.getElementById('dettaglio-missione-content').innerHTML = `
-        <div class="mb-5 pb-5 border-b-2 border-black"><h3 class="text-3xl font-extrabold text-slate-900 mb-1">Missione: ${m.destinazione}</h3><p class="text-sm font-bold text-slate-600 bg-slate-200 inline-block px-2 py-1 rounded-md border border-slate-300">ID: ${m.id} | Dal ${new Date(m.inizio).toLocaleDateString('it-IT')} al ${new Date(m.fine).toLocaleDateString('it-IT')}</p></div>
-        <div class="grid grid-cols-2 md:grid-cols-3 gap-6 mb-8">
-            <div><span class="text-[10px] font-extrabold text-slate-500 uppercase">Team</span><br><b class="text-base text-slate-900">${m.tecnico.replace(/;/g, '<br>')}</b></div>
-            <div><span class="text-[10px] font-extrabold text-slate-500 uppercase">Scopo</span><br><span class="text-sm font-bold text-slate-800">${m.scopo || 'N/D'}</span></div>
-            <div><span class="text-[10px] font-extrabold text-slate-500 uppercase">Piattaforma</span><br><span class="text-sm font-extrabold text-slate-800">${m.piattaforma || 'N/D'}</span></div>
-            <div class="bg-slate-100 p-2 rounded border-2 border-black"><span class="text-[10px] font-extrabold text-slate-600 uppercase">Prodotto</span><br><span class="text-sm font-extrabold text-slate-900">${m.prodottoNome || 'N/D'}</span></div>
-            <div class="bg-slate-100 p-2 rounded border-2 border-black"><span class="text-[10px] font-extrabold text-slate-600 uppercase">PN</span><br><span class="text-sm font-extrabold text-slate-900">${m.prodottoId || 'N/D'}</span></div>
-            <div class="bg-slate-100 p-2 rounded border-2 border-black"><span class="text-[10px] font-extrabold text-slate-600 uppercase">SN</span><br><span class="text-sm font-extrabold text-slate-900 font-mono">${m.serialNumber || 'N/D'}</span></div>
-            <div class="col-span-2 md:col-span-3"><span class="text-[10px] font-extrabold text-slate-500 uppercase">Allegati</span><br><span class="text-[11px] font-bold text-blue-700 break-all">${m.allegatiLocali || ''}<br>${m.allegatiAggiuntivi || ''}</span></div>
+        <div class="mb-5 pb-5 border-b-2 border-black">
+            <h3 class="text-3xl font-extrabold text-slate-900 mb-1">Missione: ${m.destinazione}</h3>
+            <p class="text-sm font-bold text-slate-600 bg-slate-200 inline-block px-2 py-1 rounded-md border border-slate-300">
+                ID: ${m.id} | Dal ${new Date(m.inizio).toLocaleDateString('it-IT')} al ${new Date(m.fine).toLocaleDateString('it-IT')}
+            </p>
         </div>
-        <div class="bg-slate-100 p-6 rounded-2xl border-2 border-black shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]"><div class="flex justify-between items-center mb-4 border-b-2 border-slate-300 pb-3"><h4 class="text-lg font-extrabold text-slate-900">Guasti / Problematiche</h4>${btnSegnala}</div><div class="max-h-64 overflow-y-auto pr-2">${probHTML}</div></div>
+
+        ${bannerRichiesta}
+
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-6 mb-8">
+            <div>
+                <span class="text-[10px] font-extrabold text-slate-500 uppercase">Team Assegnato</span><br>
+                ${teamHTML}
+            </div>
+            <div>
+                <span class="text-[10px] font-extrabold text-slate-500 uppercase">Scopo</span><br>
+                <span class="text-sm font-bold text-slate-800">${m.scopo || 'N/D'}</span>
+            </div>
+            <div>
+                <span class="text-[10px] font-extrabold text-slate-500 uppercase">Piattaforma</span><br>
+                <span class="text-sm font-extrabold text-slate-800">${m.piattaforma || 'N/D'}</span>
+            </div>
+            <div class="bg-slate-100 p-2.5 rounded-xl border-2 border-black">
+                <span class="text-[10px] font-extrabold text-slate-600 uppercase">Prodotto</span><br>
+                <span class="text-sm font-extrabold text-slate-900">${m.prodottoNome || 'N/D'}</span>
+            </div>
+            <div class="bg-slate-100 p-2.5 rounded-xl border-2 border-black">
+                <span class="text-[10px] font-extrabold text-slate-600 uppercase">PN</span><br>
+                <span class="text-sm font-extrabold text-slate-900">${m.prodottoId || 'N/D'}</span>
+            </div>
+            <div class="bg-slate-100 p-2.5 rounded-xl border-2 border-black">
+                <span class="text-[10px] font-extrabold text-slate-600 uppercase">SN</span><br>
+                <span class="text-sm font-extrabold text-slate-900 font-mono">${m.serialNumber || 'N/D'}</span>
+            </div>
+            <div class="col-span-2 md:col-span-3">
+                <span class="text-[10px] font-extrabold text-slate-500 uppercase">Dettagli / Note / Allegati</span><br>
+                <span class="text-xs font-bold text-blue-800 break-all leading-relaxed">
+                    ${m.allegatiLocali || ''}<br>${m.allegatiAggiuntivi || ''}
+                </span>
+            </div>
+        </div>
+
+        <div class="bg-slate-100 p-6 rounded-2xl border-2 border-black shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]">
+            <div class="flex justify-between items-center mb-4 border-b-2 border-slate-300 pb-3">
+                <h4 class="text-lg font-extrabold text-slate-900">Guasti / Problematiche</h4>
+                ${btnSegnala}
+            </div>
+            <div class="max-h-64 overflow-y-auto pr-2">${probHTML}</div>
+        </div>
     `;
+
     document.getElementById('modal-dettaglio-missione').classList.remove('hidden');
 }
 
@@ -1761,34 +1930,64 @@ function apriModificaMissione(id) {
 function chiudiModale() { document.getElementById('modal-modifica-missione').classList.add('hidden'); }
 
 async function salvaModificaMissione(e) {
-  e.preventDefault(); if(isReadOnly) return alert("Sola Lettura");
+  e.preventDefault(); 
+  if(isReadOnly) return alert("Sola Lettura");
   const id = document.getElementById('mod-id').value;
   const checkedBoxes = Array.from(document.querySelectorAll('.mod-tecnico-checkbox:checked')).map(cb => cb.value);
   const alertBox = document.getElementById('mod-alert');
   if(checkedBoxes.length === 0) { alertBox.innerText = "Seleziona almeno un operatore."; alertBox.classList.remove('hidden'); return; }
-  const tecnico = checkedBoxes.join('; '); const destinazione = document.getElementById('mod-destinazione').value.trim();
-  const inizio = document.getElementById('mod-inizio').value; const fine = document.getElementById('mod-fine').value;
+  const tecnico = checkedBoxes.join('; '); 
+  const destinazione = document.getElementById('mod-destinazione').value.trim();
+  const inizio = document.getElementById('mod-inizio').value; 
+  const fine = document.getElementById('mod-fine').value;
   if (fine < inizio) { alertBox.innerText = "Data fine non coerente."; alertBox.classList.remove('hidden'); return; }
 
   let conflitto = null;
   for (let op of checkedBoxes) {
-      const sovrappone = missioni.some(m => { if (String(m.id) === String(id)) return false; const mOps = m.tecnico.split(';').map(s=>s.trim()).filter(Boolean); return mOps.includes(op) && inizio <= m.fine && fine >= m.inizio; });
+      const sovrappone = missioni.some(m => { 
+          if (String(m.id) === String(id)) return false; 
+          const mOps = m.tecnico.split(';').map(s=>s.trim()).filter(Boolean); 
+          return mOps.includes(op) && inizio <= m.fine && fine >= m.inizio; 
+      });
       if (sovrappone) { conflitto = op; break; }
   }
   if (conflitto) { alertBox.innerText = `Impossibile salvare: il tecnico ${conflitto} è già impegnato in queste date.`; alertBox.classList.remove('hidden'); return; }
 
-  let geo = modSelectedGeo;
-  if (!geo || String(geo.name).trim().toLowerCase() !== destinazione.toLowerCase()) { let lCache = luoghi.find(l => String(l.ID_Luogo).trim().toLowerCase() === destinazione.toLowerCase()); if(lCache) geo = {lat: lCache.lat, lon: lCache.lon, name: destinazione}; }
-
-  const prodottoNome = document.getElementById('mod-prodotto').value.trim(); const prodottoPn = document.getElementById('mod-pn').value.trim();
-  if (prodottoPn && !prodotti.some(p => String(p.PN_Prodotto).trim().toLowerCase() === prodottoPn.toLowerCase())) prodotti.push({ PN: prodottoPn, NomeProdotto: prodottoNome || "Prodotto Auto-inserito" });
-  const piattaforma = document.getElementById('mod-piattaforma').value; if (piattaforma && !piattaforme.some(p => String(p.label).trim().toLowerCase() === piattaforma.trim().toLowerCase())) piattaforme.push({ label: piattaforma });
-  const scopo = document.getElementById('mod-scopo').value; if (scopo && !scopi.some(s => String(s.label).trim().toLowerCase() === scopo.trim().toLowerCase())) scopi.push({ label: scopo });
+  const prodottoNome = document.getElementById('mod-prodotto').value.trim(); 
+  const prodottoPn = document.getElementById('mod-pn').value.trim();
+  if (prodottoPn && !prodotti.some(p => String(p.PN_Prodotto).trim().toLowerCase() === prodottoPn.toLowerCase())) {
+      prodotti.push({ PN: prodottoPn, NomeProdotto: prodottoNome || "Prodotto Auto-inserito" });
+  }
+  const piattaforma = document.getElementById('mod-piattaforma').value; 
+  if (piattaforma && !piattaforme.some(p => String(p.label).trim().toLowerCase() === piattaforma.trim().toLowerCase())) piattaforme.push({ label: piattaforma });
+  const scopo = document.getElementById('mod-scopo').value; 
+  if (scopo && !scopi.some(s => String(s.label).trim().toLowerCase() === scopo.trim().toLowerCase())) scopi.push({ label: scopo });
 
   const mIndex = missioni.findIndex(x => String(x.id) === String(id));
-  if (mIndex > -1) { missioni[mIndex] = { id, tecnico, destinazione, inizio, fine, scopo, piattaforma, prodottoNome, prodottoId: prodottoPn, serialNumber: document.getElementById('mod-serial').value, allegatiLocali: document.getElementById('mod-allegati').value, allegatiAggiuntivi: document.getElementById('mod-allegati-agg').value, lat: geo ? geo.lat : missioni[mIndex].lat, lon: geo ? geo.lon : missioni[mIndex].lon }; }
+  if (mIndex > -1) { 
+      missioni[mIndex] = { 
+          id, 
+          tecnico, 
+          destinazione, 
+          inizio, 
+          fine, 
+          scopo, 
+          piattaforma, 
+          prodottoNome, 
+          prodottoId: prodottoPn, 
+          serialNumber: document.getElementById('mod-serial').value, 
+          allegatiLocali: document.getElementById('mod-allegati').value, 
+          allegatiAggiuntivi: document.getElementById('mod-allegati-agg').value,
+          stato: 'Confermata', // Una missione a cui si assegnano tecnici effettivi diventa Confermata
+          funzioneRichiesta: missioni[mIndex].funzioneRichiesta || '',
+          competenzaRichiesta: missioni[mIndex].competenzaRichiesta || ''
+      }; 
+  }
   
-  await syncData(); chiudiModale(); setupAutocomplete(); inizializzaUIPlanner();
+  await syncData(); 
+  chiudiModale(); 
+  setupAutocomplete(); 
+  inizializzaUIPlanner();
 }
 
 async function eliminaMissione(id) { 
@@ -1833,6 +2032,11 @@ function bindAutocompleteLocal(inputId, listId, array, propKey, propDesc = null,
 function setupAutocomplete() {
   bindAutocomplete('input-destinazione', 'autocomplete-list', (geo) => selectedGeo = geo); 
   bindAutocomplete('mod-destinazione', 'mod-autocomplete-list', (geo) => modSelectedGeo = geo);
+  
+  // NUOVO: Autocompletamento destinazione e PN per il tab Richiesta
+  bindAutocomplete('req-destinazione', 'req-autocomplete-list', (geo) => {}); 
+  bindAutocompleteLocal('req-pn', 'req-autocomplete-pn-list', prodotti, 'PN', 'NomeProdotto', 'req-prodotto');
+
   bindAutocompleteLocal('input-pn', 'autocomplete-pn-list', prodotti, 'PN', 'NomeProdotto', 'input-prodotto'); 
   bindAutocompleteLocal('mod-pn', 'mod-autocomplete-pn-list', prodotti, 'PN', 'NomeProdotto', 'mod-prodotto');
   bindAutocompleteLocal('input-piattaforma', 'autocomplete-piattaforma-list', piattaforme, 'label'); 
@@ -1882,6 +2086,8 @@ function initTimeline() {
 
     timelineGroups.clear();
     timelineItems.clear();
+	const isMobile = window.innerWidth < 1024;
+    const itemMargin = isMobile ? { horizontal: 2, vertical: 12 } : { horizontal: 2, vertical: 4 }; // Più spazio verticale su mobile!
 
     const n = new Date();
     const options = {
@@ -1892,7 +2098,7 @@ function initTimeline() {
         zoomKey: 'ctrlKey',
         stack: false,
         // Incrementiamo il margine dell'asse da 25 a 35
-        margin: { item: { horizontal: 2, vertical: 4 }, axis: 35 },
+        margin: { item: itemMargin, axis: 35 },
         start: new Date(n.getTime() - 45 * 86400000),
         end: new Date(n.getTime() + 45 * 86400000),
         timeAxis: { scale: 'week', step: 1 }
@@ -1910,90 +2116,201 @@ function initTimeline() {
     aggiornaTimeline();
 }
 
-
 function aggiornaTimeline() {
     if (!timeline) return;
     popolaFiltriTimeline();
 
-    const filtroNome = (document.getElementById('timeline-filter-nome')?.value || '').trim().toLowerCase();
-    const filtroFunz = (document.getElementById('timeline-filter-funzione')?.value || '').trim().toLowerCase();
-    const filtroComp = (document.getElementById('timeline-filter-competenza')?.value || '').trim().toLowerCase();
+    const filtroTesto = (document.getElementById('timeline-filter-nome')?.value || '').trim().toLowerCase();
+    const itemsRaw = [];
+    let groupsRaw = [];
 
-    const techMap = new Map();
-    tecnici.forEach(t => {
-        const nome = typeof t === 'string' ? t : (t.nome || '');
-        const funz = typeof t === 'string' ? '' : (t.funzione || '');
-        const comp = typeof t === 'string' ? '' : (t.competenza || '');
-        if (nome) techMap.set(nome.trim().toLowerCase(), { nome: nome.trim(), funzione: funz, competenza: comp });
-    });
+    if (timelineMode === 'piattaforme') {
+        // ==========================================
+        // VISTA RAGGRUPPATA PER PIATTAFORMA
+        // ==========================================
+        const piattaformePresenti = new Set();
 
-    const candidati = new Set();
-    techMap.forEach(info => {
-        const matchNome = !filtroNome || info.nome.toLowerCase().includes(filtroNome);
-        const matchFunz = !filtroFunz || info.funzione.toLowerCase() === filtroFunz;
-        const matchComp = !filtroComp || info.competenza.toLowerCase() === filtroComp;
-        if (matchNome && matchFunz && matchComp) candidati.add(info.nome);
-    });
-
-    if (!filtroFunz && !filtroComp) {
         missioni.forEach(m => {
-            String(m.tecnico || '').split(';').map(s => s.trim()).filter(Boolean).forEach(op => {
-                if (!filtroNome || op.toLowerCase().includes(filtroNome)) candidati.add(op);
+            const piatt = (m.piattaforma || 'Non Specificata').trim();
+            if (!filtroTesto || piatt.toLowerCase().includes(filtroTesto)) {
+                piattaformePresenti.add(piatt);
+            }
+        });
+
+        // Generazione gruppi verticali (Piattaforme)
+        groupsRaw = Array.from(piattaformePresenti).sort().map(p => ({
+            id: p,
+            content: `<div class="font-extrabold text-xs text-slate-900 truncate px-1.5 flex items-center gap-1" title="${p}"><span>🛳️</span> ${p}</div>`
+        }));
+
+        missioni.forEach(m => {
+            if (!m.inizio) return;
+            const piatt = (m.piattaforma || 'Non Specificata').trim();
+            if (!piattaformePresenti.has(piatt)) return;
+
+            let dStart = new Date(m.inizio);
+            if (isNaN(dStart.getTime())) return;
+            let dEnd = m.fine ? new Date(m.fine) : new Date(m.inizio);
+            if (isNaN(dEnd.getTime())) dEnd = new Date(dStart);
+            dEnd.setDate(dEnd.getDate() + 1);
+
+            const startStr = dStart.toISOString().split('T')[0];
+            const endStr = dEnd.toISOString().split('T')[0];
+
+            const isRichiesta = String(m.stato || '').toLowerCase() === 'richiesta';
+            const ops = String(m.tecnico || '').split(';').map(s => s.trim()).filter(Boolean);
+            const coloreBarra = getColorForTecnico(piatt);
+
+            // Stile barra: tratteggiato ambra per richieste, pieno per confermate
+            const stileBarra = isRichiesta
+                ? 'background: repeating-linear-gradient(45deg, #fef3c7, #fef3c7 10px, #fde68a 10px, #fde68a 20px) !important; color: #92400e !important; border: 2px dashed #d97706 !important; border-radius: 6px; font-weight: 800; font-size: 11px;'
+                : `background-color:${coloreBarra}; color:white; border:1px solid #000; border-radius:6px; font-weight:700; font-size:11px;`;
+
+            const iconaStato = isRichiesta ? '⏳ [RICHIESTA] ' : '';
+            const testoBarra = isRichiesta 
+                ? `${iconaStato}📍 ${m.destinazione || 'Missione'} (${m.funzioneRichiesta || 'Fabbisogno'} - ${m.competenzaRichiesta || ''})`
+                : `📍 ${m.destinazione || 'Missione'} (${ops.join(', ')})`;
+
+            itemsRaw.push({
+                id: `${m.id}_piatt`,
+                group: piatt,
+                content: `<b class="px-1 text-xs truncate block">${testoBarra}</b>`,
+                title: creaPreviewHTML(m, m.tecnico),
+                start: startStr,
+                end: endStr,
+                style: stileBarra
             });
         });
-    }
 
-    const itemsRaw = [];
-    missioni.forEach(m => {
-        if (!m.inizio) return;
-        let dStart = new Date(m.inizio);
-        if (isNaN(dStart.getTime())) return;
+    } else {
+        // ==========================================
+        // VISTA RAGGRUPPATA PER RISORSE (OPERATORI)
+        // ==========================================
+        const filtroFunz = (document.getElementById('timeline-filter-funzione')?.value || '').trim().toLowerCase();
+        const filtroComp = (document.getElementById('timeline-filter-competenza')?.value || '').trim().toLowerCase();
 
-        let dEnd = m.fine ? new Date(m.fine) : new Date(m.inizio);
-        if (isNaN(dEnd.getTime())) dEnd = new Date(dStart);
-        dEnd.setDate(dEnd.getDate() + 1);
+        const techMap = new Map();
+        tecnici.forEach(t => {
+            const nome = typeof t === 'string' ? t : (t.nome || '');
+            const funz = typeof t === 'string' ? '' : (t.funzione || '');
+            const comp = typeof t === 'string' ? '' : (t.competenza || '');
+            if (nome) techMap.set(nome.trim().toLowerCase(), { nome: nome.trim(), funzione: funz, competenza: comp });
+        });
 
-        const startStr = dStart.toISOString().split('T')[0];
-        const endStr = dEnd.toISOString().split('T')[0];
+        const candidati = new Set();
+        techMap.forEach(info => {
+            const matchNome = !filtroTesto || info.nome.toLowerCase().includes(filtroTesto);
+            const matchFunz = !filtroFunz || info.funzione.toLowerCase() === filtroFunz;
+            const matchComp = !filtroComp || info.competenza.toLowerCase() === filtroComp;
+            if (matchNome && matchFunz && matchComp) candidati.add(info.nome);
+        });
 
-        const ops = String(m.tecnico || '').split(';').map(s => s.trim()).filter(Boolean);
-        ops.forEach(op => {
-            if (candidati.has(op)) {
+        if (!filtroFunz && !filtroComp) {
+            missioni.forEach(m => {
+                if (String(m.stato || '').toLowerCase() !== 'richiesta') {
+                    String(m.tecnico || '').split(';').map(s => s.trim()).filter(Boolean).forEach(op => {
+                        if (!filtroTesto || op.toLowerCase().includes(filtroTesto)) candidati.add(op);
+                    });
+                }
+            });
+        }
+
+        groupsRaw = Array.from(candidati).filter(Boolean).sort().map(t => ({
+            id: t,
+            content: `<div class="font-bold text-xs text-slate-900 truncate px-1" title="${t}">${t}</div>`
+        }));
+
+        // Se esistono richieste in sospeso, aggiungiamo la riga dedicata in cima
+        const haRichieste = missioni.some(m => String(m.stato || '').toLowerCase() === 'richiesta');
+        if (haRichieste) {
+            groupsRaw.unshift({
+                id: '[Richieste da Assegnare]',
+                content: `<div class="font-extrabold text-xs text-amber-900 bg-amber-100 border border-amber-400 px-2 py-0.5 rounded shadow-sm">⏳ Richieste Pendenti</div>`
+            });
+        }
+
+        missioni.forEach(m => {
+            if (!m.inizio) return;
+            let dStart = new Date(m.inizio);
+            if (isNaN(dStart.getTime())) return;
+            let dEnd = m.fine ? new Date(m.fine) : new Date(m.inizio);
+            if (isNaN(dEnd.getTime())) dEnd = new Date(dStart);
+            dEnd.setDate(dEnd.getDate() + 1);
+
+            const startStr = dStart.toISOString().split('T')[0];
+            const endStr = dEnd.toISOString().split('T')[0];
+
+            const isRichiesta = String(m.stato || '').toLowerCase() === 'richiesta';
+
+            if (isRichiesta) {
+                // Posiziona nella corsia delle richieste pendenti
                 itemsRaw.push({
-                    id: `${m.id}_${op}`,
-                    group: op,
-                    content: `<b class="px-1 text-xs text-white">${m.destinazione || 'Missione'}</b>`,
-                    title: creaPreviewHTML(m, op),
+                    id: `${m.id}_richiesta`,
+                    group: '[Richieste da Assegnare]',
+                    content: `<b class="px-1 text-xs truncate block">⏳ [RICHIESTA] 📍 ${m.destinazione || 'Missione'} (${m.funzioneRichiesta || 'Fabbisogno'} - ${m.competenzaRichiesta || ''})</b>`,
+                    title: creaPreviewHTML(m, m.tecnico),
                     start: startStr,
                     end: endStr,
-                    style: `background-color:${getColorForTecnico(op)}; color:white; border:1px solid #000; border-radius:6px; font-weight:700; font-size:11px;`
+                    style: 'background: repeating-linear-gradient(45deg, #fef3c7, #fef3c7 10px, #fde68a 10px, #fde68a 20px) !important; color: #92400e !important; border: 2px dashed #d97706 !important; border-radius: 6px; font-weight: 800; font-size: 11px;'
+                });
+            } else {
+                // Posiziona sulle righe dei tecnici assegnati
+                const ops = String(m.tecnico || '').split(';').map(s => s.trim()).filter(Boolean);
+                ops.forEach(op => {
+                    if (candidati.has(op)) {
+                        itemsRaw.push({
+                            id: `${m.id}_${op}`,
+                            group: op,
+                            content: `<b class="px-1 text-xs text-white truncate block">📍 ${m.destinazione || 'Missione'}</b>`,
+                            title: creaPreviewHTML(m, op),
+                            start: startStr,
+                            end: endStr,
+                            style: `background-color:${getColorForTecnico(op)}; color:white; border:1px solid #000; border-radius:6px; font-weight:700; font-size:11px;`
+                        });
+                    }
                 });
             }
         });
-    });
+    }
 
-    const groupsRaw = Array.from(candidati).filter(Boolean).sort().map(t => ({
-        id: t,
-        content: `<div class="font-bold text-xs text-slate-900 truncate px-1" title="${t}">${t}</div>`
-    }));
-    
-    // Metodo blindato: pulisce e riaggiunge i dati per evitare il crash di Vis.js
+    // Svuotamento e re-inserimento sicuro dei dati Vis.js
     timelineGroups.clear();
     timelineItems.clear();
     timelineGroups.add(groupsRaw);
     timelineItems.add(itemsRaw);
-	
-	setTimeout(() => {
+
+    setTimeout(() => {
         if (timeline) timeline.redraw();
     }, 50);
-
-/*    if (itemsRaw.length > 0) {
-        timeline.fit({ animation: false });
-    }
-*/
 }
 
-	
+function impostaVistaTimeline(modo) {
+    timelineMode = modo;
+    const btnRisorse = document.getElementById('btn-view-risorse');
+    const btnPiattaforme = document.getElementById('btn-view-piattaforme');
+    const titolo = document.getElementById('timeline-titolo');
+
+    if (modo === 'risorse') {
+        if (btnRisorse) {
+            btnRisorse.className = 'px-4 py-1 text-xs font-extrabold rounded-lg bg-blue-600 text-white shadow transition-all';
+        }
+        if (btnPiattaforme) {
+            btnPiattaforme.className = 'px-4 py-1 text-xs font-extrabold rounded-lg text-slate-700 hover:text-slate-900 transition-all';
+        }
+        if (titolo) titolo.innerText = 'Timeline Globale Risorse';
+    } else {
+        if (btnPiattaforme) {
+            btnPiattaforme.className = 'px-4 py-1 text-xs font-extrabold rounded-lg bg-blue-600 text-white shadow transition-all';
+        }
+        if (btnRisorse) {
+            btnRisorse.className = 'px-4 py-1 text-xs font-extrabold rounded-lg text-slate-700 hover:text-slate-900 transition-all';
+        }
+        if (titolo) titolo.innerText = 'Timeline per Piattaforma';
+    }
+
+    aggiornaTimeline();
+}
+
 function initMiniTimeline() { 
     miniTimeline = new vis.Timeline(document.getElementById('mini-timeline'), [], [], {orientation:'top', locale:'it', stack: true}); 
     const o=new Date(); 
@@ -2003,7 +2320,23 @@ function initMiniTimeline() {
 function popolaFiltriTimeline() {
     const fSelect = document.getElementById('timeline-filter-funzione');
     const cSelect = document.getElementById('timeline-filter-competenza');
+    const nInput = document.getElementById('timeline-filter-nome');
     if (!fSelect || !cSelect) return;
+
+    if (timelineMode === 'piattaforme') {
+        if (nInput) nInput.placeholder = 'Filtra piattaforma...';
+        // Nella modalità piattaforma, disabilitiamo i filtri operatore
+        fSelect.disabled = true;
+        cSelect.disabled = true;
+        fSelect.innerHTML = '<option value="">Filtro disattivato in vista Piattaforme</option>';
+        cSelect.innerHTML = '<option value="">Filtro disattivato in vista Piattaforme</option>';
+        return;
+    }
+
+    // Modalità Risorse
+    if (nInput) nInput.placeholder = 'Digita operatore per filtrare...';
+    fSelect.disabled = false;
+    cSelect.disabled = false;
 
     const curF = fSelect.value;
     const curC = cSelect.value;
@@ -2014,8 +2347,10 @@ function popolaFiltriTimeline() {
     fSelect.innerHTML = '<option value="">Tutte le funzioni</option>' + funzioniUniche.map(f => `<option value="${f}">${f}</option>`).join('');
     cSelect.innerHTML = '<option value="">Tutte le competenze</option>' + competenzeUniche.map(c => `<option value="${c}">${c}</option>`).join('');
 
-    fSelect.value = curF; cSelect.value = curC;
+    fSelect.value = curF;
+    cSelect.value = curC;
 }
+
 
 function resetFiltriTimeline() {
     const nInput = document.getElementById('timeline-filter-nome');
@@ -2104,22 +2439,29 @@ function aggiornaMappa() {
     const d = document.getElementById('map-date-picker').value; 
     if(!d) return;
 
-    const attivi = missioni.filter(m => m.inizio <= d && m.fine >= d && m.lat !== 0); 
+    const attivi = missioni.filter(m => m.inizio <= d && m.fine >= d); 
     const bounds = []; 
-    const tecniciMap = new Map(); // Sostituito Set con Map per conservare il luogo
+    const tecniciMap = new Map();
     const usate = {};
 
     attivi.forEach(m => { 
+        const lMatch = luoghi.find(l => String(l.ID_Luogo).trim().toLowerCase() === String(m.destinazione).trim().toLowerCase());
+        if (!lMatch || isNaN(parseFloat(lMatch.lat)) || isNaN(parseFloat(lMatch.lon))) return;
+
+        const baseLat = parseFloat(lMatch.lat);
+        const baseLon = parseFloat(lMatch.lon);
+	
         const ops = String(m.tecnico).split(';').map(s=>s.trim()).filter(Boolean); 
         ops.forEach(op => { 
-            tecniciMap.set(op, m.destinazione); // Salviamo Op -> Luogo
-            let lat = m.lat, lon = m.lon; 
-            let cK = `${lat.toFixed(1)}_${lon.toFixed(1)}`; 
-            if(!usate[cK]) usate[cK]=0; 
+            tecniciMap.set(op, m.destinazione);
+            let lat = baseLat;
+            let lon = baseLon;
+            let cK = `${lat.toFixed(2)}_${lon.toFixed(2)}`; 
+            if(!usate[cK]) usate[cK] = 0; 
             let count = usate[cK]++; 
             if(count > 0) { 
-                const a = count * (Math.PI/4); 
-                const r = 0.1 * Math.ceil(count/4); 
+                const a = count * (Math.PI / 4); 
+                const r = 0.12 * Math.ceil(count / 4); 
                 lat += Math.cos(a) * r; 
                 lon += Math.sin(a) * r; 
             } 
@@ -2138,7 +2480,6 @@ function aggiornaMappa() {
         if(tecniciMap.size === 0) {
             leg.innerHTML = '<li class="text-xs text-slate-500 font-bold italic">Nessun tecnico in trasferta in questa data.</li>'; 
         } else {
-            // Rimosso 'truncate' e aggiunto 'leading-tight' e 'break-words'
             leg.innerHTML = Array.from(tecniciMap.entries()).sort((a,b)=>a[0].localeCompare(b[0])).map(([t, loc]) => `
             <li class="flex items-start gap-3 text-sm font-extrabold text-slate-900 mb-2">
                 <span class="w-4 h-4 rounded-full border-2 border-black shadow-[0_2px_0_0_#000] flex-shrink-0 mt-0.5" style="background-color: ${getColorForTecnico(t)}"></span>
@@ -2158,12 +2499,13 @@ function renderStatisticheLuoghi() {
 
     const conteggi = {};
     missFiltrate.forEach(m => {
-        const l = m.destinazione;
-        if(l && m.lat !== 0) { 
-            if(!conteggi[l]) conteggi[l] = {count: 0, lat: m.lat, lon: m.lon};
-            conteggi[l].count++;
-        }
-    });
+    const l = m.destinazione;
+    const lMatch = luoghi.find(x => String(x.ID_Luogo).trim().toLowerCase() === String(l).trim().toLowerCase());
+		if(lMatch && !isNaN(parseFloat(lMatch.lat)) && !isNaN(parseFloat(lMatch.lon))) { 
+			if(!conteggi[l]) conteggi[l] = {count: 0, lat: parseFloat(lMatch.lat), lon: parseFloat(lMatch.lon)};
+			conteggi[l].count++;
+		}
+	});
     
     const bounds = [];
     Object.keys(conteggi).forEach(luogoNome => {
@@ -2829,4 +3171,66 @@ function apriModalGraficoAssiemi() {
     setTimeout(() => {
         renderAnalisiAssiemi();
     }, 50);
+}
+
+
+async function salvaRichiestaMissione(e) {
+    e.preventDefault();
+    if(isReadOnly) return alert("Modalità Sola Lettura: impossibile salvare modifiche.");
+
+    const ini = document.getElementById('req-inizio').value;
+    const fine = document.getElementById('req-fine').value;
+    const dest = document.getElementById('req-destinazione').value.trim();
+    const piatt = document.getElementById('req-piattaforma').value.trim();
+    const funz = document.getElementById('req-funzione').value;
+    const comp = document.getElementById('req-competenza').value;
+    const scopo = document.getElementById('req-scopo').value.trim();
+
+    if (!scopo) return alert("Il campo Scopo dell'Intervento è obbligatorio.");
+    if (fine < ini) return alert("Data fine non coerente (precede l'inizio).");
+
+    const pn = document.getElementById('req-pn').value.trim();
+    const prodNome = document.getElementById('req-prodotto').value.trim();
+    const serial = document.getElementById('req-serial').value.trim();
+    const note = document.getElementById('req-allegati').value.trim();
+
+    missioni.push({
+        id: String(calcolaProssimoId(missioni)),
+        tecnico: `[Richiesta: ${funz} (${comp})]`,
+        destinazione: dest,
+        inizio: ini,
+        fine: fine,
+        scopo: scopo,
+        piattaforma: piatt,
+        prodottoNome: prodNome,
+        prodottoId: pn,
+        serialNumber: serial,
+        allegatiLocali: note,
+        allegatiAggiuntivi: '',
+        stato: 'Richiesta',
+        funzioneRichiesta: funz,
+        competenzaRichiesta: comp
+    });
+
+    await syncData();
+    mostraNotificaConferma("Richiesta inviata con successo! Visibile tratteggiata in Timeline.");
+    e.target.reset();
+    inizializzaUIPlanner();
+    switchTab('timeline');
+}
+
+function popolaSelectRichiesta() {
+    const fSelect = document.getElementById('req-funzione');
+    const cSelect = document.getElementById('req-competenza');
+    if (!fSelect || !cSelect) return;
+
+    // Estrae i valori univoci presenti nel database Excel/SQLite dei tecnici
+    const funzioniReali = [...new Set(tecnici.map(t => t.funzione).filter(Boolean))].sort();
+    const competenzeReali = [...new Set(tecnici.map(t => t.competenza).filter(Boolean))].sort();
+
+    fSelect.innerHTML = '<option value="">-- Seleziona Funzione --</option>' + 
+        funzioniReali.map(f => `<option value="${f}">${f}</option>`).join('');
+
+    cSelect.innerHTML = '<option value="">-- Seleziona Competenza --</option>' + 
+        competenzeReali.map(c => `<option value="${c}">${c}</option>`).join('');
 }
