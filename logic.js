@@ -28,11 +28,13 @@ let currentUser = localStorage.getItem('fsm_user') || '';
 let isReadOnly = false;
 let heartbeatInterval = null;
 
-let timeline, miniTimeline, map, mapLayer, mapLuoghi, mapLuoghiLayer, chartLuoghi, chartAssiemi;
+let timeline, miniTimeline, reqMiniTimeline, map, mapLayer, mapLuoghi, mapLuoghiLayer, chartLuoghi, chartAssiemi;
 
 let sortColPlanner = 'inizio'; let sortDescPlanner = true;
 let sortColRitorni = 'data'; let sortDescRitorni = true;
 let timelineMode = 'risorse';
+
+let indisponibilita = []; 
 
 const COLORI = ['#2563eb', '#059669', '#ea580c', '#0ea5e9', '#dc2626', '#16a34a', '#c2410c', '#0891b2', '#0d9488', '#b91c1c', '#ca8a04', '#4338ca'];
 function getColorForTecnico(nome) { let hash = 0; for (let i=0; i<nome.length; i++) hash = nome.charCodeAt(i) + ((hash<<5)-hash); return COLORI[Math.abs(hash) % COLORI.length]; }
@@ -189,6 +191,13 @@ function switchTab(tabId) {
     if (tabId === 'mappa' && map) { setTimeout(() => { map.invalidateSize(); if(!document.getElementById('map-date-picker').value) impostaMappaOggi(); aggiornaMappa(); }, 100); }
     if (tabId === 'pianifica' && miniTimeline) { setTimeout(() => { miniTimeline.redraw(); aggiornaMiniTimeline(); }, 100); }
     if (tabId === 'luoghi') { setTimeout(() => { renderStatisticheLuoghi(); }, 100); }
+	if (tabId === 'richiesta') {
+        setTimeout(() => {
+            if (!reqMiniTimeline) initReqMiniTimeline();
+            reqMiniTimeline.redraw();
+            aggiornaReqMiniTimeline();
+        }, 100);
+    }
 }
 
 function switchTabRitorni(tabId) {
@@ -246,7 +255,16 @@ function getStrutturaSQL() {
             FOREIGN KEY (ID_Operatore) REFERENCES Tecnici(ID_Operatore), 
             FOREIGN KEY (ID_Luogo) REFERENCES Luoghi(ID_Luogo), 
             FOREIGN KEY (PN_Prodotto) REFERENCES Prodotti(PN_Prodotto)
-        );        
+        );   
+		
+		CREATE TABLE Indisponibilita (
+			ID_Indisponibilita TEXT PRIMARY KEY,
+			ID_Operatore TEXT NOT NULL,
+			DataInizio TEXT NOT NULL,
+			DataFine TEXT NOT NULL,
+			FOREIGN KEY (ID_Operatore) REFERENCES Tecnici(ID_Operatore) ON DELETE CASCADE
+		);
+		
         CREATE TABLE Problemi (ID_Problema TEXT PRIMARY KEY, ID_Missione TEXT NOT NULL, PN_Assieme TEXT NOT NULL, SN_Assieme TEXT, DataSegnalazione TEXT, ID_CodiceProblematica TEXT, DescrizioneProblema TEXT, Sintomi TEXT, FOREIGN KEY (ID_Missione) REFERENCES Trasferte(ID_Missione) ON DELETE CASCADE, FOREIGN KEY (PN_Assieme) REFERENCES Sottoassiemi(PN_Sottoassieme), FOREIGN KEY (ID_CodiceProblematica) REFERENCES CodiciProblematica(ID_CodiceProblematica));
         CREATE TABLE Soluzioni (ID_Soluzione TEXT PRIMARY KEY, ID_Problema TEXT NOT NULL, DataSoluzione TEXT, Azione TEXT, Esito TEXT, FOREIGN KEY (ID_Problema) REFERENCES Problemi(ID_Problema) ON DELETE CASCADE);
         
@@ -302,7 +320,19 @@ function estraiDatiDaSQL() {
         const resCod = sqlDB.exec("SELECT * FROM CodiciProblematica");
         if (resCod.length) codiciProblematica = resCod[0].values.map(r => ({ id: r[0], desc: r[1] }));
 		
-const resMiss = sqlDB.exec("SELECT * FROM Trasferte");
+		const resIndisp = sqlDB.exec("SELECT * FROM Indisponibilita");
+		if (resIndisp.length && resIndisp[0].values) {
+			indisponibilita = resIndisp[0].values.map(r => ({
+			id: String(r[0]),
+			tecnico: String(r[1]).trim(),
+			inizio: parseExcelDate(r[2]),
+			fine: parseExcelDate(r[3])
+		}));
+		} else {
+			indisponibilita = [];
+		}
+		
+		const resMiss = sqlDB.exec("SELECT * FROM Trasferte");
         if (resMiss.length && resMiss[0].values) {
             missioni = resMiss[0].values.map(row => {
                 const idMiss = String(row[0] || '');
@@ -492,6 +522,7 @@ async function syncData() {
         DROP TABLE IF EXISTS SistemiDeployati;
         DROP TABLE IF EXISTS Soluzioni;
         DROP TABLE IF EXISTS Problemi;
+		DROP TABLE IF EXISTS Indisponibilita;
         DROP TABLE IF EXISTS Trasferte;
         DROP TABLE IF EXISTS CodiciProblematica;
         DROP TABLE IF EXISTS Sottoassiemi;
@@ -499,6 +530,7 @@ async function syncData() {
         DROP TABLE IF EXISTS Luoghi;
         DROP TABLE IF EXISTS Tecnici;
         DROP TABLE IF EXISTS ConfigurazioneLock;
+		
     `);
 
     // Ricrea la struttura aggiornata
@@ -523,6 +555,12 @@ async function syncData() {
     problematiche.forEach(p => sqlDB.run(`INSERT INTO Problemi (ID_Problema, ID_Missione, PN_Assieme, SN_Assieme, DataSegnalazione, ID_CodiceProblematica, DescrizioneProblema, Sintomi) VALUES ('${p.id}', '${p.id_missione}', '${escapeSql(p.pn_assieme)}', '${escapeSql(p.sn_assieme || '')}', '${p.data}', '${escapeSql(p.codice)}', '${escapeSql(p.desc)}', '${escapeSql(p.sintomi)}')`));
     soluzioni.forEach(s => sqlDB.run(`INSERT INTO Soluzioni (ID_Soluzione, ID_Problema, DataSoluzione, Azione, Esito) VALUES ('${s.id}', '${s.id_problema}', '${s.data}', '${escapeSql(s.azione)}', '${escapeSql(s.esito)}')`));
     
+	indisponibilita.forEach(ind => {
+		sqlDB.run(`INSERT INTO Indisponibilita (ID_Indisponibilita, ID_Operatore, DataInizio, DataFine) VALUES (
+			'${ind.id}', '${escapeSql(ind.tecnico)}', '${ind.inizio}', '${ind.fine}'
+		)`);
+	});
+
     sistemiDeployati.forEach(s => sqlDB.run(`INSERT INTO SistemiDeployati (Piattaforma, PN_Prodotto, SerialNumber_prodotto, Data_Installazione, StatoSalute, UltimoAggiornamento) VALUES ('${escapeSql(s.piattaforma)}', '${escapeSql(s.prodottoId)}', '${escapeSql(s.serialNumber)}', '${s.dataInstallazione || ''}', '${escapeSql(s.stato)}', '${s.aggiornamento}')`));
     sottoassiemiDeployati.forEach(s => sqlDB.run(`INSERT INTO SottoassiemiDeployati (PN_Assieme_Padre, SerialNumber_Assieme_Padre, PN_Sottoassieme, SerialNumberAssieme, Data_Installazione, StatoSalute, UltimoAggiornamento) VALUES ('${escapeSql(s.pn_padre)}', '${escapeSql(s.sn_padre)}', '${escapeSql(s.pn_sub)}', '${escapeSql(s.sn_sub)}', '${s.dataInstallazione || ''}', '${escapeSql(s.stato)}', '${s.aggiornamento}')`));
     catalogoECP.forEach(e => sqlDB.run(`INSERT INTO CatalogoECP (ID_ECP, PN_Prodotto, Descrizione) VALUES ('${escapeSql(e.id_ecp)}', '${escapeSql(e.prodottoId)}', '${escapeSql(e.desc)}')`));
@@ -597,6 +635,20 @@ if (wb.Sheets["Trasferte"]) XLSX.utils.sheet_to_json(wb.Sheets["Trasferte"]).for
         '${escapeSql(r.CompetenzaRichiesta || '')}'
     )`, "Trasferte"); 
 });
+
+               faseCorrente = "Importazione Foglio: Indisponibilita";
+					if (wb.Sheets["Indisponibilita"]) {
+						XLSX.utils.sheet_to_json(wb.Sheets["Indisponibilita"]).forEach(r => {
+						const id = String(r.ID_Indisponibilita || r.ID || calcolaProssimoId(indisponibilita));
+						const tec = r.ID_Operatore || r.Tecnico;
+						if (tec) {
+							tryInsert(`INSERT OR REPLACE INTO Indisponibilita VALUES (
+							'${escapeSql(id)}', '${escapeSql(tec)}', '${parseExcelDate(r.DataInizio)}', '${parseExcelDate(r.DataFine)}'
+							)`, "Indisponibilita");
+						}
+						});
+					}
+
                 faseCorrente = "Importazione Foglio: Problemi";
                 if (wb.Sheets["Problemi"]) XLSX.utils.sheet_to_json(wb.Sheets["Problemi"]).forEach(r => { const id = String(r.ID_Problema || r.ID); if(id) tryInsert(`INSERT OR REPLACE INTO Problemi VALUES ('${escapeSql(id)}', '${escapeSql(r.ID_Missione)}', '${escapeSql(r.PN_Assieme)}', '${escapeSql(r.SN_Assieme || '')}', '${parseExcelDate(r.DataSegnalazione)}', '${escapeSql(r.ID_CodiceProblematica)}', '${escapeSql(r.DescrizioneProblema)}', '${escapeSql(r.Sintomi)}')`, "Problemi"); });
                 
@@ -1443,13 +1495,19 @@ async function salvaMissione(e) {
     const arrayOps = tec.split(';').map(s=>s.trim()).filter(Boolean);
     let conflitto = null;
     for (let op of arrayOps) {
-        const sovrappone = missioni.some(m => { 
-            const mOps = m.tecnico.split(';').map(s=>s.trim()).filter(Boolean); 
-            return mOps.includes(op) && ini <= m.fine && fine >= m.inizio; 
-        });
-        if (sovrappone) { conflitto = op; break; }
-    }
-    if (conflitto) return alert(`Impossibile assegnare la missione: il tecnico ${conflitto} ha già una trasferta in queste date.`);
+    const sovrapponeMiss = missioni.some(m => { 
+        if (String(m.stato || '').toLowerCase() === 'richiesta') return false;
+        const mOps = m.tecnico.split(';').map(s=>s.trim()).filter(Boolean); 
+        return mOps.includes(op) && ini <= m.fine && fine >= m.inizio; 
+    });
+    const sovrapponeIndisp = indisponibilita.some(ind => {
+        return ind.tecnico.toLowerCase() === op.toLowerCase() && ini <= ind.fine && fine >= ind.inizio;
+    });
+
+    if (sovrapponeMiss) { conflitto = `${op} (già in trasferta)`; break; }
+    if (sovrapponeIndisp) { conflitto = `${op} (indisponibile/ferie/sede)`; break; }
+	}
+	if (conflitto) return alert(`Impossibile procedere: ${conflitto} nelle date indicate.`);
 
     const prodottoNome = document.getElementById('input-prodotto').value.trim();
     const prodottoPn = document.getElementById('input-pn').value.trim();
@@ -1527,11 +1585,18 @@ function popolaSelectTecnici() {
             
             // Calcolo disponibilità se le date sono inserite
             if (ini && fine) {
-                occupato = missioni.some(m => { 
-                    const mOps = String(m.tecnico).split(';').map(s=>s.trim()).filter(Boolean); 
-                    return mOps.includes(nome) && ini <= m.fine && fine >= m.inizio; 
-                });
-            }
+				const inMissione = missioni.some(m => { 
+				if (String(m.stato || '').toLowerCase() === 'richiesta') return false;
+					const mOps = String(m.tecnico).split(';').map(s=>s.trim()).filter(Boolean); 
+					return mOps.includes(nome) && ini <= m.fine && fine >= m.inizio; 
+				});
+
+				const inIndisponibilita = indisponibilita.some(ind => {
+				return ind.tecnico.toLowerCase() === nome.toLowerCase() && ini <= ind.fine && fine >= ind.inizio;
+				});
+
+			occupato = inMissione || inIndisponibilita;
+			}
             
             // Selezionati che diventano occupati vengono deselezionati in automatico
             if (occupato && selezionati.includes(nome)) {
@@ -1600,6 +1665,9 @@ function renderListaTeam() {
             <div class="opacity-0 group-hover:opacity-100 transition-opacity flex justify-center gap-2">
                 <button onclick="modificaTecnico(${idx})" class="px-3 py-1.5 bg-slate-100 border-2 border-black rounded-lg text-xs font-bold hover:bg-slate-200">Modifica</button>
                 <button onclick="rimuoviTecnico(${idx})" class="px-3 py-1.5 bg-red-100 border-2 border-black rounded-lg text-xs font-bold text-red-900 hover:bg-red-200">Rimuovi</button>
+				<button onclick="apriModalIndisponibilita('${t.nome || t}')" class="px-3 py-1.5 bg-amber-100 border-2 border-black rounded-lg text-xs font-bold text-amber-900 hover:bg-amber-200">
+    🏖️/🏢 Assenze
+</button>
             </div>
         </td>
     </tr>`).join('');
@@ -2137,7 +2205,6 @@ function aggiornaTimeline() {
             }
         });
 
-        // Generazione gruppi verticali (Piattaforme)
         groupsRaw = Array.from(piattaformePresenti).sort().map(p => ({
             id: p,
             content: `<div class="font-extrabold text-xs text-slate-900 truncate px-1.5 flex items-center gap-1" title="${p}"><span>🛳️</span> ${p}</div>`
@@ -2161,7 +2228,6 @@ function aggiornaTimeline() {
             const ops = String(m.tecnico || '').split(';').map(s => s.trim()).filter(Boolean);
             const coloreBarra = getColorForTecnico(piatt);
 
-            // Stile barra: tratteggiato ambra per richieste, pieno per confermate
             const stileBarra = isRichiesta
                 ? 'background: repeating-linear-gradient(45deg, #fef3c7, #fef3c7 10px, #fde68a 10px, #fde68a 20px) !important; color: #92400e !important; border: 2px dashed #d97706 !important; border-radius: 6px; font-weight: 800; font-size: 11px;'
                 : `background-color:${coloreBarra}; color:white; border:1px solid #000; border-radius:6px; font-weight:700; font-size:11px;`;
@@ -2220,7 +2286,6 @@ function aggiornaTimeline() {
             content: `<div class="font-bold text-xs text-slate-900 truncate px-1" title="${t}">${t}</div>`
         }));
 
-        // Se esistono richieste in sospeso, aggiungiamo la riga dedicata in cima
         const haRichieste = missioni.some(m => String(m.stato || '').toLowerCase() === 'richiesta');
         if (haRichieste) {
             groupsRaw.unshift({
@@ -2229,6 +2294,7 @@ function aggiornaTimeline() {
             });
         }
 
+        // 1. Missioni e Richieste
         missioni.forEach(m => {
             if (!m.inizio) return;
             let dStart = new Date(m.inizio);
@@ -2243,7 +2309,6 @@ function aggiornaTimeline() {
             const isRichiesta = String(m.stato || '').toLowerCase() === 'richiesta';
 
             if (isRichiesta) {
-                // Posiziona nella corsia delle richieste pendenti
                 itemsRaw.push({
                     id: `${m.id}_richiesta`,
                     group: '[Richieste da Assegnare]',
@@ -2254,7 +2319,6 @@ function aggiornaTimeline() {
                     style: 'background: repeating-linear-gradient(45deg, #fef3c7, #fef3c7 10px, #fde68a 10px, #fde68a 20px) !important; color: #92400e !important; border: 2px dashed #d97706 !important; border-radius: 6px; font-weight: 800; font-size: 11px;'
                 });
             } else {
-                // Posiziona sulle righe dei tecnici assegnati
                 const ops = String(m.tecnico || '').split(';').map(s => s.trim()).filter(Boolean);
                 ops.forEach(op => {
                     if (candidati.has(op)) {
@@ -2271,9 +2335,31 @@ function aggiornaTimeline() {
                 });
             }
         });
+
+        // 2. Blocchi di Indisponibilità (Ferie / Presidio in sede)
+        if (typeof indisponibilita !== 'undefined' && Array.isArray(indisponibilita)) {
+            indisponibilita.forEach(ind => {
+                if (!candidati.has(ind.tecnico)) return;
+                
+                let dStart = new Date(ind.inizio);
+                if (isNaN(dStart.getTime())) return;
+                let dEnd = ind.fine ? new Date(ind.fine) : new Date(ind.inizio);
+                if (isNaN(dEnd.getTime())) dEnd = new Date(dStart);
+                dEnd.setDate(dEnd.getDate() + 1);
+
+                itemsRaw.push({
+                    id: `indisp_${ind.id}`,
+                    group: ind.tecnico,
+                    content: `<b class="px-1 text-xs truncate block">🏖️/🏢 Non Disponibile</b>`,
+                    title: `<div class="p-2 font-sans text-xs"><b>${ind.tecnico}</b><br>Periodo Indisponibilità:<br>${new Date(ind.inizio).toLocaleDateString('it-IT')} - ${new Date(ind.fine).toLocaleDateString('it-IT')}</div>`,
+                    start: dStart.toISOString().split('T')[0],
+                    end: dEnd.toISOString().split('T')[0],
+                    style: 'background-color: #64748b !important; color: white !important; border: 1px dashed #000 !important; border-radius: 6px; font-weight: 700; font-size: 11px;'
+                });
+            });
+        }
     }
 
-    // Svuotamento e re-inserimento sicuro dei dati Vis.js
     timelineGroups.clear();
     timelineItems.clear();
     timelineGroups.add(groupsRaw);
@@ -2282,6 +2368,63 @@ function aggiornaTimeline() {
     setTimeout(() => {
         if (timeline) timeline.redraw();
     }, 50);
+}
+
+function aggiornaMiniTimeline() { 
+    if (!miniTimeline) return; 
+    const inputT = document.getElementById('input-tecnico'); 
+    if (!inputT) return; 
+    const sel = inputT.value.split(';').map(s => s.trim()).filter(Boolean); 
+    if (!sel.length) { 
+        miniTimeline.setGroups([]); 
+        miniTimeline.setItems([]); 
+        return; 
+    } 
+
+    const groups = sel.map(t => ({
+        id: t, 
+        content: `
+            <div class="flex items-center gap-1.5 py-1 pr-2">
+                <div class="w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-extrabold border border-black" style="background-color: ${getColorForTecnico(t)}">
+                    ${getInitials(t)}
+                </div>
+                <span class="font-extrabold text-xs text-slate-800">${t}</span>
+            </div>`
+    })); 
+
+    const items = []; 
+    
+    // Missioni confermate dei tecnici selezionati
+    missioni.forEach(m => {
+        if (String(m.stato || '').toLowerCase() === 'richiesta') return;
+        m.tecnico.split(';').map(s => s.trim()).forEach(op => {
+            if (sel.includes(op)) {
+                items.push(formatTimelineItem(m, op));
+            }
+        }); 
+    }); 
+
+    // Indisponibilità dei tecnici selezionati
+    if (typeof indisponibilita !== 'undefined' && Array.isArray(indisponibilita)) {
+        indisponibilita.forEach(ind => {
+            if (sel.includes(ind.tecnico)) {
+                let dEnd = new Date(ind.fine || ind.inizio);
+                dEnd.setDate(dEnd.getDate() + 1);
+                items.push({
+                    id: `mini_indisp_${ind.id}`,
+                    group: ind.tecnico,
+                    content: `<span class="truncate block text-[10px]">🏖️/🏢 Non Disp.</span>`,
+                    title: `<div class="p-2 font-sans text-xs"><b>${ind.tecnico}</b><br>Indisponibilità: ${new Date(ind.inizio).toLocaleDateString('it-IT')} - ${new Date(ind.fine).toLocaleDateString('it-IT')}</div>`,
+                    start: ind.inizio,
+                    end: dEnd.toISOString().split('T')[0],
+                    style: 'background-color: #64748b !important; color: white !important; border: 1px dashed #000 !important; border-radius: 4px; font-size: 10px; font-weight: 700; padding: 2px 4px;'
+                });
+            }
+        });
+    }
+
+    miniTimeline.setGroups(new vis.DataSet(groups)); 
+    miniTimeline.setItems(new vis.DataSet(items)); 
 }
 
 function impostaVistaTimeline(modo) {
@@ -2362,19 +2505,6 @@ function resetFiltriTimeline() {
     aggiornaTimeline();
 }
 
-
-function aggiornaMiniTimeline() { 
-    if(!miniTimeline) return; 
-    const inputT = document.getElementById('input-tecnico'); 
-    if(!inputT) return; 
-    const sel = inputT.value.split(';').map(s=>s.trim()).filter(Boolean); 
-    if(!sel.length) { miniTimeline.setGroups([]); miniTimeline.setItems([]); return; } 
-    const groups = sel.map(t=>({id:t, content:`<span class="font-extrabold text-[10px] p-1 text-slate-800">${t}</span>`})); 
-    const items = []; 
-    missioni.forEach(m=>{ m.tecnico.split(';').map(s=>s.trim()).forEach(op=> {if(sel.includes(op)) items.push(formatTimelineItem(m, op));}); }); 
-    miniTimeline.setGroups(new vis.DataSet(groups)); 
-    miniTimeline.setItems(new vis.DataSet(items)); 
-}
 
 function timelineZoom(tipo) { 
     if (!timeline) return; 
@@ -2538,13 +2668,23 @@ function renderStatisticheLuoghi() {
 // ==========================================
 
 window.onload = async () => {
-    document.getElementById('input-inizio').value = new Date().toISOString().split('T')[0]; 
-    document.getElementById('input-fine').value = new Date().toISOString().split('T')[0]; 
-    document.getElementById('segnala-prob-data').value = new Date().toISOString().split('T')[0]; 
-    document.getElementById('sol-data').value = new Date().toISOString().split('T')[0];
+    const oggi = new Date().toISOString().split('T')[0];
+
+    // Date predefinite per Pianifica, Segnala e Soluzioni
+    document.getElementById('input-inizio').value = oggi; 
+    document.getElementById('input-fine').value = oggi; 
+    document.getElementById('segnala-prob-data').value = oggi; 
+    document.getElementById('sol-data').value = oggi;
+
+    // NUOVO: Date predefinite per la scheda Richiedi
+    const reqIni = document.getElementById('req-inizio');
+    const reqFine = document.getElementById('req-fine');
+    if (reqIni) reqIni.value = oggi;
+    if (reqFine) reqFine.value = oggi;
     
     initTimeline(); 
     initMiniTimeline(); 
+    initReqMiniTimeline();
     initMap(); 
     setupAutocomplete(); 
     setupDragAndDrop(); 
@@ -3082,7 +3222,7 @@ function esportaInExcel() {
     // Ordine dei fogli da ricreare (rispetta la logica di dipendenza)
     const tabelle = [
         "Tecnici", "Luoghi", "Prodotti", "Sottoassiemi", "CodiciProblematica",
-        "Trasferte", "Problemi", "Soluzioni",
+        "Trasferte","Indisponibilita", "Problemi", "Soluzioni",
         "SistemiDeployati", "SottoassiemiDeployati", "CatalogoECP", "ApplicazioneECP"
     ];
 
@@ -3214,7 +3354,13 @@ async function salvaRichiestaMissione(e) {
 
     await syncData();
     mostraNotificaConferma("Richiesta inviata con successo! Visibile tratteggiata in Timeline.");
+    
+    // Reset del form e ripristino data odierna
     e.target.reset();
+    const oggi = new Date().toISOString().split('T')[0];
+    document.getElementById('req-inizio').value = oggi;
+    document.getElementById('req-fine').value = oggi;
+
     inizializzaUIPlanner();
     switchTab('timeline');
 }
@@ -3233,4 +3379,321 @@ function popolaSelectRichiesta() {
 
     cSelect.innerHTML = '<option value="">-- Seleziona Competenza --</option>' + 
         competenzeReali.map(c => `<option value="${c}">${c}</option>`).join('');
+}
+
+function initReqMiniTimeline() {
+    const container = document.getElementById('req-mini-timeline');
+    if (!container) return;
+    
+    if (reqMiniTimeline) {
+        try { reqMiniTimeline.destroy(); } catch(e) {}
+        reqMiniTimeline = null;
+    }
+
+    const o = new Date();
+    reqMiniTimeline = new vis.Timeline(container, [], [], {
+        orientation: 'top',
+        locale: 'it',
+        stack: false,
+        height: '100%',
+        verticalScroll: false,
+        zoomKey: 'ctrlKey',
+        margin: { item: { horizontal: 0, vertical: 6 }, axis: 15 },
+        start: new Date(o.getTime() - 5 * 86400000),
+        end: new Date(o.getTime() + 20 * 86400000)
+    });
+}
+
+function aggiornaReqMiniTimeline() {
+    const container = document.getElementById('req-mini-timeline');
+    if (!container) return;
+
+    if (!reqMiniTimeline) {
+        initReqMiniTimeline();
+    }
+
+    const fInput = document.getElementById('req-funzione');
+    const cInput = document.getElementById('req-competenza');
+    const funzVal = (fInput?.value || '').trim();
+    const compVal = (cInput?.value || '').trim();
+    const funz = funzVal.toLowerCase();
+    const comp = compVal.toLowerCase();
+
+    const dIni = document.getElementById('req-inizio')?.value || '';
+    const dFine = document.getElementById('req-fine')?.value || dIni;
+    const badge = document.getElementById('req-match-count');
+
+    // 1. FINCHÉ NON SONO SELEZIONATE ENTRAMBE: NIENTE BARRE, SOLO PLACEHOLDER
+    if (!funz || !comp) {
+        reqMiniTimeline.setGroups([]);
+        reqMiniTimeline.setItems([]);
+        if (badge) {
+            badge.innerText = "Seleziona Funzione e Competenza";
+            badge.className = "text-[10px] font-black bg-slate-100 text-slate-500 border border-slate-300 px-2 py-0.5 rounded-md";
+        }
+        return;
+    }
+
+    // 2. FILTRO OPERATORI CHE HANNO SIA QUELLA FUNZIONE SIA QUELLA COMPETENZA
+    const matchTecnici = tecnici.filter(t => {
+        const matchF = String(t.funzione || '').trim().toLowerCase() === funz;
+        const matchC = String(t.competenza || '').trim().toLowerCase() === comp;
+        return matchF && matchC;
+    });
+
+    const totaleTecnici = matchTecnici.length;
+
+    if (totaleTecnici === 0) {
+        reqMiniTimeline.setGroups([]);
+        reqMiniTimeline.setItems([]);
+        if (badge) {
+            badge.innerText = "0 Risorse Trovate per questo Profilo";
+            badge.className = "text-[10px] font-black bg-rose-100 text-rose-900 border border-rose-400 px-2 py-0.5 rounded-md";
+        }
+        return;
+    }
+
+    const nomiPool = matchTecnici.map(t => String(t.nome || t).trim().toLowerCase());
+
+    // 3. SINGOLA RIGA TIMELINE
+    const groups = [{
+        id: 'capacita_aggregata',
+        content: `
+            <div class="flex items-center gap-2 py-1 pr-2 font-extrabold text-xs text-slate-900">
+                <span class="w-2.5 h-2.5 rounded-full bg-slate-700"></span>
+                <span>${funzVal} / ${compVal}</span>
+                <span class="text-[10px] font-mono text-slate-500">(${totaleTecnici} totali)</span>
+            </div>`
+    }];
+
+    // 4. SCANSIONE DISPONIBILITÀ GIORNO PER GIORNO (Finestra ±60 giorni rispetto alla data o oggi)
+    const refDate = dIni ? new Date(dIni) : new Date();
+    const startDateScan = new Date(refDate.getTime() - 60 * 86400000);
+    const endDateScan = new Date(refDate.getTime() + 60 * 86400000);
+
+    const impegniPerGiorno = {};
+    for (let d = new Date(startDateScan); d <= endDateScan; d.setDate(d.getDate() + 1)) {
+        impegniPerGiorno[d.toISOString().split('T')[0]] = new Set();
+    }
+
+    // Aggiungi tecnici occupati da trasferte confermate
+    missioni.forEach(m => {
+        if (!m.inizio || String(m.stato || '').toLowerCase() === 'richiesta') return;
+        const ops = String(m.tecnico || '').split(';').map(s => s.trim().toLowerCase()).filter(Boolean);
+        const mStart = m.inizio;
+        const mEnd = m.fine || m.inizio;
+
+        ops.forEach(op => {
+            if (nomiPool.includes(op)) {
+                for (let curr = new Date(mStart); curr <= new Date(mEnd); curr.setDate(curr.getDate() + 1)) {
+                    const dayStr = curr.toISOString().split('T')[0];
+                    if (impegniPerGiorno[dayStr]) impegniPerGiorno[dayStr].add(op);
+                }
+            }
+        });
+    });
+
+    // Aggiungi tecnici occupati da indisponibilità / ferie
+    if (typeof indisponibilita !== 'undefined' && Array.isArray(indisponibilita)) {
+        indisponibilita.forEach(ind => {
+            const op = String(ind.tecnico || '').trim().toLowerCase();
+            if (nomiPool.includes(op) && ind.inizio) {
+                const iStart = ind.inizio;
+                const iEnd = ind.fine || ind.inizio;
+                for (let curr = new Date(iStart); curr <= new Date(iEnd); curr.setDate(curr.getDate() + 1)) {
+                    const dayStr = curr.toISOString().split('T')[0];
+                    if (impegniPerGiorno[dayStr]) impegniPerGiorno[dayStr].add(op);
+                }
+            }
+        });
+    }
+
+    // 5. CALCOLA IL BADGE: se le date sono inserite, calcola le risorse libere minime nel periodo richiesto
+    if (badge) {
+        if (dIni && dFine && dFine >= dIni) {
+            let maxOccupatiNelPeriodo = 0;
+            for (let curr = new Date(dIni); curr <= new Date(dFine); curr.setDate(curr.getDate() + 1)) {
+                const dayStr = curr.toISOString().split('T')[0];
+                const occ = impegniPerGiorno[dayStr] ? impegniPerGiorno[dayStr].size : 0;
+                if (occ > maxOccupatiNelPeriodo) maxOccupatiNelPeriodo = occ;
+            }
+            const libereMinime = Math.max(0, totaleTecnici - maxOccupatiNelPeriodo);
+
+            if (libereMinime === 0) {
+                badge.innerText = `⛔ 0/${totaleTecnici} Risorse Libere nel Periodo Richiesto`;
+                badge.className = "text-[10px] font-black bg-rose-100 text-rose-900 border border-rose-500 px-2.5 py-0.5 rounded-md shadow-sm";
+            } else {
+                badge.innerText = `✅ ${libereMinime}/${totaleTecnici} Risorse Disponibili nel Periodo`;
+                badge.className = "text-[10px] font-black bg-emerald-100 text-emerald-900 border border-emerald-500 px-2.5 py-0.5 rounded-md shadow-sm";
+            }
+        } else {
+            badge.innerText = `${totaleTecnici} Risorse Registrate (${funzVal} - ${compVal})`;
+            badge.className = "text-[10px] font-black bg-blue-100 text-blue-900 border border-blue-400 px-2.5 py-0.5 rounded-md";
+        }
+    }
+
+    // 6. CREAZIONE BARRE: SOLO QUANDO DISPONIBILITÀ = 0 (NESSUNA RISORSA LIBERA)
+    // Se c'è anche solo 1 risorsa libera, lo spazio rimane BIANCO.
+    const dateKeys = Object.keys(impegniPerGiorno).sort();
+    const items = [];
+    let bloccoSaturato = null; // { inizio, fine }
+
+    dateKeys.forEach((giorno) => {
+        const occupati = impegniPerGiorno[giorno].size;
+        const saturato = (occupati >= totaleTecnici);
+
+        if (saturato) {
+            if (!bloccoSaturato) {
+                bloccoSaturato = { inizio: giorno, fine: giorno };
+            } else {
+                bloccoSaturato.fine = giorno;
+            }
+        } else {
+            if (bloccoSaturato) {
+                aggiungiBloccoNonDisponibile(bloccoSaturato, totaleTecnici, items);
+                bloccoSaturato = null;
+            }
+        }
+    });
+
+    if (bloccoSaturato) {
+        aggiungiBloccoNonDisponibile(bloccoSaturato, totaleTecnici, items);
+    }
+
+    // Centratura finestra temporale
+    if (dIni) {
+        const targetDate = new Date(dIni);
+        if (!isNaN(targetDate.getTime())) {
+            reqMiniTimeline.setWindow(
+                new Date(targetDate.getTime() - 5 * 86400000),
+                new Date(targetDate.getTime() + 20 * 86400000),
+                { animation: false }
+            );
+        }
+    }
+
+    reqMiniTimeline.setGroups(new vis.DataSet(groups));
+    reqMiniTimeline.setItems(new vis.DataSet(items));
+
+    setTimeout(() => {
+        if (reqMiniTimeline) reqMiniTimeline.redraw();
+    }, 50);
+}
+
+// Funzione helper per creare la barra rossa nei soli giorni di saturazione totale
+function aggiungiBloccoNonDisponibile(blocco, totale, itemsArray) {
+    let dEndObj = new Date(blocco.fine);
+    dEndObj.setDate(dEndObj.getDate() + 1);
+    const endStr = dEndObj.toISOString().split('T')[0];
+
+    itemsArray.push({
+        id: `nodisp_${blocco.inizio}_${blocco.fine}`,
+        group: 'capacita_aggregata',
+        content: `<b class="px-2 text-xs">⛔ Nessuna disponibilità (0/${totale} liberi)</b>`,
+        title: `<div class="p-2 font-sans text-xs"><b>Tutte le risorse del profilo sono occupate:</b><br>Dal: ${new Date(blocco.inizio).toLocaleDateString('it-IT')}<br>Al: ${new Date(blocco.fine).toLocaleDateString('it-IT')}<br>Totale tecnici: ${totale} (Tutti impegnati)</div>`,
+        start: blocco.inizio,
+        end: endStr,
+        style: 'background: repeating-linear-gradient(45deg, #ef4444, #ef4444 8px, #dc2626 8px, #dc2626 16px) !important; color: white !important; border: 1px solid #7f1d1d !important; border-radius: 6px; font-weight: 800; font-size: 11px;'
+    });
+}
+
+// Funzione ausiliaria per generare i blocchi aggregati colorati
+function creaBarraCapacita(intervallo, totale, itemsArray) {
+    const occupati = intervallo.occupati;
+    const disponibili = totale - occupati;
+    
+    // Non mostrare barre dove il pool è interamente libero (lascia la timeline pulita)
+    if (occupati === 0) return;
+
+    let dEndObj = new Date(intervallo.fine);
+    dEndObj.setDate(dEndObj.getDate() + 1);
+    const endStr = dEndObj.toISOString().split('T')[0];
+
+    const isSaturato = disponibili <= 0;
+    
+    // Rosso se sono tutti occupati, Arancione se c'è disponibilità parziale
+    const stile = isSaturato
+        ? 'background: repeating-linear-gradient(45deg, #fee2e2, #fee2e2 8px, #fecaca 8px, #fecaca 16px) !important; color: #991b1b !important; border: 2px solid #dc2626 !important; border-radius: 6px; font-weight: 800; font-size: 10px;'
+        : 'background: repeating-linear-gradient(45deg, #fef3c7, #fef3c7 8px, #fde68a 8px, #fde68a 16px) !important; color: #92400e !important; border: 1px solid #d97706 !important; border-radius: 6px; font-weight: 800; font-size: 10px;';
+
+    const labelTesto = isSaturato
+        ? `⛔ Nessuna Risorsa Libera (0/${totale})`
+        : `⚠️ ${disponibili}/${totale} Risorse Disponibili (${occupati} Impegnate)`;
+
+    itemsArray.push({
+        id: `cap_${intervallo.inizio}_${intervallo.fine}`,
+        group: 'capacita_aggregata',
+        content: `<span class="truncate block px-1">${labelTesto}</span>`,
+        title: `<div class="p-2 font-sans text-xs"><b>Stato Capacità Profilo:</b><br>Dal: ${new Date(intervallo.inizio).toLocaleDateString('it-IT')}<br>Al: ${new Date(intervallo.fine).toLocaleDateString('it-IT')}<br><br>• Risorse Totali nel Profilo: <b>${totale}</b><br>• Risorse Impegnate: <b>${occupati}</b><br>• Risorse Ancora Libere: <b>${disponibili}</b></div>`,
+        start: intervallo.inizio,
+        end: endStr,
+        style: stile
+    });
+}
+
+let operatoreIndispCorrente = '';
+
+function apriModalIndisponibilita(nomeTecnico) {
+    operatoreIndispCorrente = nomeTecnico;
+    document.getElementById('indisp-operatore-hidden').value = nomeTecnico;
+    document.getElementById('indisp-tecnico-nome').innerText = `Operatore: ${nomeTecnico}`;
+    document.getElementById('indisp-inizio').value = new Date().toISOString().split('T')[0];
+    document.getElementById('indisp-fine').value = new Date().toISOString().split('T')[0];
+
+    renderListaPeriodiIndisp();
+    document.getElementById('modal-indisponibilita').classList.remove('hidden');
+}
+
+function renderListaPeriodiIndisp() {
+    const box = document.getElementById('lista-periodi-indisponibilita');
+    const periodi = indisponibilita.filter(i => i.tecnico.toLowerCase() === operatoreIndispCorrente.toLowerCase());
+
+    if (periodi.length === 0) {
+        box.innerHTML = '<p class="text-xs text-slate-400 italic">Nessun periodo di assenza registrato.</p>';
+        return;
+    }
+
+    box.innerHTML = periodi.map(p => `
+        <div class="flex justify-between items-center p-2.5 bg-white border border-slate-300 rounded-lg shadow-sm">
+            <span class="text-xs font-bold text-slate-800">
+                Dal <b>${new Date(p.inizio).toLocaleDateString('it-IT')}</b> al <b>${new Date(p.fine).toLocaleDateString('it-IT')}</b>
+            </span>
+            <button onclick="eliminaIndisponibilita('${p.id}')" class="text-xs text-red-600 font-extrabold hover:underline">
+                Rimuovi
+            </button>
+        </div>
+    `).join('');
+}
+
+async function salvaNuovaIndisponibilita(e) {
+    e.preventDefault();
+    if (isReadOnly) return alert("Sola Lettura");
+
+    const tec = document.getElementById('indisp-operatore-hidden').value;
+    const ini = document.getElementById('indisp-inizio').value;
+    const fine = document.getElementById('indisp-fine').value;
+
+    if (fine < ini) return alert("La data di fine non può precedere la data di inizio.");
+
+    indisponibilita.push({
+        id: String(calcolaProssimoId(indisponibilita)),
+        tecnico: tec,
+        inizio: ini,
+        fine: fine
+    });
+
+    await syncData();
+    renderListaPeriodiIndisp();
+    inizializzaUIPlanner();
+    if (reqMiniTimeline) aggiornaReqMiniTimeline();
+    mostraNotificaConferma("Periodo di indisponibilità registrato!");
+}
+
+async function eliminaIndisponibilita(id) {
+    if (isReadOnly) return alert("Sola Lettura");
+    indisponibilita = indisponibilita.filter(i => String(i.id) !== String(id));
+    await syncData();
+    renderListaPeriodiIndisp();
+    inizializzaUIPlanner();
+    if (reqMiniTimeline) aggiornaReqMiniTimeline();
 }
