@@ -2281,20 +2281,31 @@ function aggiornaTimeline() {
             });
         }
 
+        // Creazione gruppi per i tecnici
         groupsRaw = Array.from(candidati).filter(Boolean).sort().map(t => ({
             id: t,
             content: `<div class="font-bold text-xs text-slate-900 truncate px-1" title="${t}">${t}</div>`
         }));
 
-        const haRichieste = missioni.some(m => String(m.stato || '').toLowerCase() === 'richiesta');
-        if (haRichieste) {
-            groupsRaw.unshift({
-                id: '[Richieste da Assegnare]',
-                content: `<div class="font-extrabold text-xs text-amber-900 bg-amber-100 border border-amber-400 px-2 py-0.5 rounded shadow-sm">⏳ Richieste Pendenti</div>`
+        // GESTIONE RICHIESTE: Corsie separate per ciascuna richiesta pendente
+        const richiestePendenti = missioni.filter(m => String(m.stato || '').toLowerCase() === 'richiesta');
+        if (richiestePendenti.length > 0) {
+            richiestePendenti.slice().reverse().forEach(req => {
+                const groupId = `[Richiesta_${req.id}]`;
+                const labelProfilo = req.funzioneRichiesta 
+                    ? `${req.funzioneRichiesta} (${req.competenzaRichiesta || 'Tutte'})` 
+                    : 'Fabbisogno Generico';
+
+                groupsRaw.unshift({
+                    id: groupId,
+                    content: `<div class="font-extrabold text-[11px] text-amber-900 bg-amber-100 border border-amber-400 px-2 py-0.5 rounded shadow-sm flex items-center gap-1 truncate" title="Richiesta #${req.id}: ${labelProfilo}">
+                        <span>⏳</span> <b>#${req.id}</b>: <span class="truncate">${labelProfilo}</span>
+                    </div>`
+                });
             });
         }
 
-        // 1. Missioni e Richieste
+        // 1. Inserimento missioni e richieste
         missioni.forEach(m => {
             if (!m.inizio) return;
             let dStart = new Date(m.inizio);
@@ -2309,10 +2320,11 @@ function aggiornaTimeline() {
             const isRichiesta = String(m.stato || '').toLowerCase() === 'richiesta';
 
             if (isRichiesta) {
+                // Posiziona sulla propria corsia orizzontale dedicata
                 itemsRaw.push({
                     id: `${m.id}_richiesta`,
-                    group: '[Richieste da Assegnare]',
-                    content: `<b class="px-1 text-xs truncate block">⏳ [RICHIESTA] 📍 ${m.destinazione || 'Missione'} (${m.funzioneRichiesta || 'Fabbisogno'} - ${m.competenzaRichiesta || ''})</b>`,
+                    group: `[Richiesta_${m.id}]`,
+                    content: `<b class="px-1 text-xs truncate block">⏳ 📍 ${m.destinazione || 'Destinazione'} - ${m.scopo || 'Intervento'}</b>`,
                     title: creaPreviewHTML(m, m.tecnico),
                     start: startStr,
                     end: endStr,
@@ -2336,7 +2348,7 @@ function aggiornaTimeline() {
             }
         });
 
-        // 2. Blocchi di Indisponibilità (Ferie / Presidio in sede)
+        // 2. Inserimento blocchi indisponibilità per operatore
         if (typeof indisponibilita !== 'undefined' && Array.isArray(indisponibilita)) {
             indisponibilita.forEach(ind => {
                 if (!candidati.has(ind.tecnico)) return;
